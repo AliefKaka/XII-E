@@ -11,9 +11,9 @@ window.TOKO = {
   // LOKASI TOKO / STAN (Takeaway) — atur koordinat lat & lng sesuka hati.
   // Cara dapat koordinat: buka Google Maps → klik kanan lokasi stan → salin angka koordinat (lat, lng).
   lokasi: {
-    nama: 'Stan Utama',
-    alamat: 'Isi alamat singkat atau patokan lokasi stan di sini',
-    jamBuka: 'Setiap hari, 09.00 – 21.00 WIB',
+    nama: 'D SECO',
+    alamat: 'JI. AR Hakim No.04, Ditotrunan, Kec. Lumajang, Kabupaten Lumajang, Jawa Timur 67316 (sebelah CABDIN)',
+    jamBuka: 'jumat, 06.00 – 15.15 WIB',
     lat: -8.137445,
     lng: 113.223003
   },
