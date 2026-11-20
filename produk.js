@@ -14,8 +14,8 @@ window.TOKO = {
     nama: 'D SECO',
     alamat: 'JI. AR Hakim No.04, Ditotrunan, Kec. Lumajang, Kabupaten Lumajang, Jawa Timur 67316 (sebelah CABDIN)',
     jamBuka: 'jumat, 06.00 – 15.15 WIB',
-    lat: -8.137445,
-    lng: 113.223003
+    lat: -8.137244,
+    lng: 113.223281
   },
   // SUPABASE VIA VERCEL ENVIRONMENT VARIABLES (disarankan):
   // Biarkan url & anonKey kosong di sini lalu atur SUPABASE_URL dan SUPABASE_ANON_KEY di Vercel
