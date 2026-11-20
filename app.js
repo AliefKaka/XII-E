@@ -28,9 +28,11 @@
     return 'https://maps.google.com/maps?q=' + encodeURIComponent(lokasi.lat + ',' + lokasi.lng) + '&z=16&output=embed';
   }
 
-  function buatPesan(items, pembeli, toko) {
+  function buatPesan(items, pembeli, toko, kode) {
     var t = hitungTotal(items), mu = toko.mataUang;
-    var baris = ['Halo *' + toko.nama + '*, saya mau pesan (Takeaway):', ''];
+    var baris = ['Halo *' + toko.nama + '*, saya mau pesan (Takeaway):'];
+    if (kode) baris.push('*Kode Pesanan: ' + kode + '*');
+    baris.push('');
     items.forEach(function (i, n) {
       baris.push((n + 1) + '. *' + i.nama + '*' + (i.label ? ' (' + i.label + ')' : ''));
       baris.push('   ' + i.qty + ' x ' + rupiah(i.harga, mu) + ' = ' + rupiah(i.qty * i.harga, mu));
@@ -39,7 +41,7 @@
     baris.push('Nama: ' + (pembeli.nama || '-'));
     baris.push('Pengambilan: Takeaway (Ambil di lokasi)');
     if (pembeli.catatan) baris.push('Catatan: ' + pembeli.catatan);
-    baris.push('', 'Terima kasih!');
+    baris.push('', '_Struk pemesanan sudah saya simpan untuk bukti pengambilan._', 'Terima kasih!');
     return baris.join('\n');
   }
 
@@ -119,7 +121,7 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function rp(n) { return rupiah(n, TOKO.mataUang); }
   var simpanan = { get: function (k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
-  var tt; function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('tampil'); clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2000); }
+  var tt; function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('tampil'); clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2400); }
 
   var keranjang = simpanan.get('katalog-keranjang', []);
   var katAktif = 'Semua';
@@ -211,6 +213,65 @@
   }
   $('#detail').addEventListener('click', function (e) { if (e.target === this) this.close(); });
 
+  // ---------- struk digital ----------
+  function perbaruiTombolStrukTerakhir() {
+    var btn = $('#btnStrukTerakhir');
+    if (!btn || !root.StrukKit) return;
+    var riwayat = root.StrukKit.bacaLokal();
+    btn.hidden = !riwayat.length;
+  }
+
+  function bukaStruk(pesanan, infoSimpan) {
+    if (!root.StrukKit) return;
+    var modal = $('#strukModal'), isi = $('#strukModalIsi');
+    if (!modal || !isi) return;
+    var waUrl = linkWA(TOKO.wa, pesanan.pesan_wa || buatPesan(pesanan.items, pesanan, TOKO, pesanan.kode));
+    var statusSimpan = infoSimpan && infoSimpan.mode === 'supabase'
+      ? '<span class="struk-status ok">Tercatat otomatis di sistem admin</span>'
+      : '<span class="struk-status">Struk siap disimpan &amp; dikirim ke WhatsApp</span>';
+
+    isi.innerHTML =
+      '<div class="struk-modal-bungkus">' +
+        '<header class="struk-modal-kepala">' +
+          '<div><h2>Struk Pemesanan</h2>' + statusSimpan + '</div>' +
+          '<button class="ikon-btn" id="tutupStruk" aria-label="Tutup struk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
+        '</header>' +
+        '<div class="struk-modal-badan">' + root.StrukKit.renderStrukHTML(pesanan, TOKO) + '</div>' +
+        '<div class="struk-aksi">' +
+          '<a class="tombol-wa" id="aksiKirimWA" href="' + esc(waUrl) + '" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Kirim Pesan ke WhatsApp</a>' +
+          '<div class="struk-aksi-baris">' +
+            '<button type="button" class="tombol-sekunder" id="aksiBagikanWA"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Bagikan Gambar ke WA</button>' +
+            '<button type="button" class="tombol-sekunder" id="aksiCetakPDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>Cetak / Download PDF</button>' +
+            '<button type="button" class="tombol-sekunder" id="aksiUnduhPNG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download Gambar (PNG)</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    if (!modal.open) modal.showModal();
+    isi.onclick = function (e) {
+      var btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.id === 'tutupStruk') return modal.close();
+      if (btn.id === 'aksiCetakPDF') {
+        root.StrukKit.cetakStrukPDF(pesanan, TOKO);
+      } else if (btn.id === 'aksiUnduhPNG') {
+        root.StrukKit.unduhStrukPNG(pesanan, TOKO)
+          .then(function () { toast('Gambar struk tersimpan'); })
+          .catch(function () { toast('Gagal mengunduh gambar struk'); });
+      } else if (btn.id === 'aksiBagikanWA') {
+        root.StrukKit.bagikanStrukKeWA(pesanan, TOKO, waUrl).then(function (res) {
+          if (res && res.metode === 'fallback') {
+            toast('Gambar struk diunduh — silakan lampirkan di chat WhatsApp');
+          }
+        }).catch(function () {
+          toast('Gagal membagikan gambar, gunakan tombol Download PNG');
+        });
+      }
+    };
+  }
+  var strukModalEl = $('#strukModal');
+  if (strukModalEl) strukModalEl.addEventListener('click', function (e) { if (e.target === this) this.close(); });
+
   // ---------- keranjang ----------
   function labelPilihan(pil) { return Object.keys(pil || {}).map(function (k) { return pil[k]; }).join(', '); }
   function tambah(p, pilihan, qty) {
@@ -238,6 +299,7 @@
       '<div class="total"><span>Total</span><span>' + rp(t.total) + '</span></div>' +
       '<div class="catatan">Takeaway · Ambil di stan' + (urlMaps ? ' · <a href="' + esc(urlMaps) + '" target="_blank" rel="noopener">Lihat Maps</a>' : '') + '</div>';
     $('#btnWa').disabled = !keranjang.length;
+    perbaruiTombolStrukTerakhir();
   }
 
   function bukaLaci(buka) {
@@ -275,13 +337,51 @@
     else if (b.dataset.k) { var i = keranjang[+b.dataset.k]; i.qty += +b.dataset.d; if (i.qty < 1) keranjang.splice(+b.dataset.k, 1); }
     simpan();
   };
+  var btnStrukTerakhir = $('#btnStrukTerakhir');
+  if (btnStrukTerakhir) {
+    btnStrukTerakhir.onclick = function () {
+      if (!root.StrukKit) return;
+      var riwayat = root.StrukKit.bacaLokal();
+      if (riwayat.length) { bukaLaci(false); bukaStruk(riwayat[0]); }
+    };
+  }
   $('#formPesan').addEventListener('invalid', function () { $('#dataPembeli').open = true; }, true);
   $('#formPesan').onsubmit = function (e) {
     e.preventDefault(); var f = e.target;
     if (!keranjang.length) return;
     var pb = { nama: f.elements.nama.value.trim(), catatan: f.elements.catatan.value.trim() };
     simpanan.set('katalog-pembeli', pb);
-    window.open(linkWA(TOKO.wa, buatPesan(keranjang, pb, TOKO)), '_blank', 'noopener');
+    var itemsSalin = keranjang.map(function (i) {
+      return { id: i.id, nama: i.nama, label: i.label || '', harga: i.harga, qty: i.qty };
+    });
+    var t = hitungTotal(itemsSalin);
+    var kode = root.StrukKit ? root.StrukKit.buatKodePesanan(TOKO.nama) : 'ORD-' + Date.now();
+    var pesanWA = buatPesan(itemsSalin, pb, TOKO, kode);
+    var pesanan = {
+      kode: kode,
+      created_at: new Date().toISOString(),
+      nama: pb.nama,
+      catatan: pb.catatan,
+      items: itemsSalin,
+      total: t.total,
+      status: 'Baru',
+      pesan_wa: pesanWA
+    };
+
+    var btn = $('#btnWa');
+    var labelAsli = btn.innerHTML;
+    btn.disabled = true;
+    btn.textContent = 'Membuat struk…';
+
+    var proses = root.StrukKit ? root.StrukKit.simpanPesanan(pesanan, TOKO) : Promise.resolve({ ok: true, mode: 'lokal', data: pesanan });
+    proses.then(function (hasil) {
+      btn.innerHTML = labelAsli;
+      keranjang = [];
+      simpan();
+      bukaLaci(false);
+      bukaStruk(pesanan, hasil);
+      if (hasil && hasil.error) toast('Struk dibuat (simpan lokal — cek pengaturan Supabase)');
+    });
   };
   $('#btnTema').onclick = function () {
     var gelap = document.documentElement.getAttribute('data-mode') !== 'gelap';

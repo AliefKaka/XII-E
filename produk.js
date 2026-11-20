@@ -17,6 +17,18 @@ window.TOKO = {
     lat: -8.137445,
     lng: 113.223003
   },
+  // SUPABASE — isi Project URL dan Publishable/anon key dari dashboard Supabase
+  // agar seluruh pesanan otomatis tersimpan ke database dan tampil di halaman Admin.
+  supabase: {
+    url: '',      // Contoh: 'https://abcdefghijklmno.supabase.co'
+    anonKey: '',  // Contoh: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' atau 'sb_publishable_...'
+    tabel: 'pesanan'
+  },
+  // AKUN ADMIN — digunakan untuk masuk ke halaman admin.html
+  admin: {
+    username: 'admin',
+    pin: '362008'
+  },
   // OPSIONAL: ambil produk dari Google Sheet (File → Bagikan → Publikasikan ke web → CSV).
   // Kolom: id,nama,kategori,harga,hargaCoret,deskripsi,varian,gambar,stok,label
   // varian: "Ukuran:S,M,L;Warna:Hitam,Putih"   gambar: url1|url2 (kosongkan = gambar ilustrasi)

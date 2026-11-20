@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- kredit oleh Alief Kaka (@m.alif666) — https://wa.me/62895411120976. Lisensi Nonkomersial Alief Kaka: wajib kredit, dilarang dijual (lihat LICENSE). -->
+<html lang="id" data-mode="terang">
+<head>
+<script src="tema.js"></script>
+<script>
+(function () {
+  var m = (window.TEMA && TEMA.mode) || 'auto';
+  try { var t = localStorage.getItem('katalog-tema'); if (t === 'gelap' || t === 'terang') m = t; } catch (e) {}
+  if (m === 'auto') m = matchMedia('(prefers-color-scheme: dark)').matches ? 'gelap' : 'terang';
+  document.documentElement.setAttribute('data-mode', m);
+})();
+</script>
+<link rel="stylesheet" href="tema.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel Admin — Pemantau Pesanan</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='16' fill='%231b1d1a'/%3E%3Cpath d='M9 12h14l-1.5 11h-11z' fill='%23f6f1e7'/%3E%3Cpath d='M12 12a4 4 0 0 1 8 0' stroke='%23f6f1e7' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="fontTema" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="kepala">
+  <div class="wadah kepala-isi">
+    <a href="index.html" class="merek"><span class="merek-ikon">D</span><span><b id="namaToko" data-tema-nama>D SECO</b><small>Panel Admin Pesanan</small></span></a>
+    <div class="kepala-aksi">
+      <a class="tombol-sekunder" href="index.html">Katalog</a>
+      <button class="ikon-btn" id="btnTema" aria-label="Ganti mode gelap/terang"><svg viewBox="0 0 24 24"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button>
+      <button class="tombol-sekunder" id="btnKeluar" type="button" hidden>Keluar</button>
+    </div>
+  </div>
+</header>
+
+<main class="wadah admin-wadah">
+  <!-- Login Admin -->
+  <section id="adminLogin" class="admin-login-kartu" aria-label="Masuk Admin">
+    <h1>Masuk Admin</h1>
+    <p>Masukkan username dan PIN untuk memantau daftar pemesan, formulir, dan struk pesanan.</p>
+    <form id="formLogin" style="display:grid;gap:12px">
+      <label>Username<input name="username" required autocomplete="username" placeholder="Masukkan username"></label>
+      <label>PIN<input name="pin" type="password" inputmode="numeric" required autocomplete="current-password" placeholder="Masukkan PIN"></label>
+      <p id="loginGalat" class="admin-galat" hidden></p>
+      <button class="tombol" type="submit">Masuk ke Panel Admin</button>
+    </form>
+  </section>
+
+  <!-- Dashboard Admin -->
+  <section id="adminPanel" hidden>
+    <div class="admin-bar-atas">
+      <div>
+        <h1>Daftar Pesanan Masuk</h1>
+        <span id="statusKoneksi" class="admin-koneksi"><i></i>Memeriksa koneksi…</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="tombol-sekunder" id="btnSegarkan" type="button">Muat Ulang</button>
+      </div>
+    </div>
+
+    <div class="admin-stats" id="adminStats">
+      <div class="stat-kartu"><span>Total Pesanan</span><b id="statTotal">0</b></div>
+      <div class="stat-kartu"><span>Total Omzet</span><b id="statOmzet">Rp0</b></div>
+      <div class="stat-kartu"><span>Pesanan Baru</span><b id="statBaru">0</b></div>
+      <div class="stat-kartu"><span>Selesai</span><b id="statSelesai">0</b></div>
+    </div>
+
+    <div class="saring" style="margin-bottom:18px">
+      <label class="cari"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input type="search" id="cariPesanan" placeholder="Cari kode, nama pemesan, catatan, atau produk…" aria-label="Cari pesanan"></label>
+      <select id="filterStatus" aria-label="Filter status">
+        <option value="Semua">Semua status</option>
+        <option value="Baru">Baru</option>
+        <option value="Diproses">Diproses</option>
+        <option value="Selesai">Selesai</option>
+        <option value="Dibatalkan">Dibatalkan</option>
+      </select>
+    </div>
+
+    <div class="admin-daftar" id="daftarPesanan"></div>
+  </section>
+</main>
+
+<!-- Modal Struk Admin -->
+<dialog id="strukModal" class="modal modal-struk"><div id="strukModalIsi"></div></dialog>
+<div id="areaCetakStruk" class="area-cetak" aria-hidden="true"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="produk.js"></script>
+<script src="struk.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

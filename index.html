@@ -28,6 +28,7 @@
   <div class="wadah kepala-isi">
     <a href="#" class="merek"><span class="merek-ikon">R</span><span><b id="namaToko" data-tema-nama>Rupa Lokal</b><small id="slogan"></small></span></a>
     <div class="kepala-aksi">
+      <a class="ikon-btn" id="btnAdmin" href="admin.html" aria-label="Buka halaman admin" title="Panel Admin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 4v5c0 4.5-3 8.2-7 9.5C8 20.2 5 16.5 5 12V7l7-4z"/><circle cx="12" cy="10.2" r="2.1"/><path d="M8.8 15.8c.7-1.5 1.9-2.3 3.2-2.3s2.5.8 3.2 2.3"/></svg></a>
       <a class="ikon-btn" id="btnLokasi" href="#lokasi" aria-label="Lihat lokasi stan" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6-5.5-6-11a6 6 0 1 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg></a>
       <button class="ikon-btn" id="btnTema" aria-label="Ganti mode gelap/terang"><svg viewBox="0 0 24 24"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg></button>
       <button class="keranjang-btn" id="btnKeranjang" aria-label="Buka keranjang"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1.5 12h-11zM9 8a3 3 0 0 1 6 0"/></svg><span class="keranjang-teks">Keranjang</span><span class="hitung" id="hitungKeranjang" hidden>0</span></button>
@@ -69,6 +70,12 @@
 <!-- Detail produk -->
 <dialog id="detail" class="modal"><div id="detailIsi"></div></dialog>
 
+<!-- Struk pemesanan -->
+<dialog id="strukModal" class="modal modal-struk"><div id="strukModalIsi"></div></dialog>
+
+<!-- Area cetak struk (khusus print / download PDF) -->
+<div id="areaCetakStruk" class="area-cetak" aria-hidden="true"></div>
+
 <!-- Keranjang -->
 <div class="tirai" id="tirai" hidden></div>
 <aside class="laci" id="laci" aria-label="Keranjang" aria-hidden="true">
@@ -81,12 +88,15 @@
       <label>Nama<input name="nama" required autocomplete="name"></label>
       <label>Catatan (opsional)<input name="catatan" placeholder="Mis. jam ambil, keterangan tambahan"></label>
     </details>
-    <button class="tombol-wa" id="btnWa" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Pesan via WhatsApp</button>
+    <p class="info-struk">Mohon simpan struk untuk bukti pemesanan dan pengambilan.</p>
+    <button class="tombol-wa" id="btnWa" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Pesan &amp; Buat Struk</button>
+    <button class="tombol-sekunder" id="btnStrukTerakhir" type="button" hidden>Lihat struk terakhir</button>
   </form>
 </aside>
 <div class="toast" id="toast" role="status"></div>
 
 <script src="produk.js"></script>
+<script src="struk.js"></script>
 <script src="app.js"></script>
   <p class="kredit-Alief Kaka" style="margin:24px auto 112px;padding:0 16px;text-align:center;font:12px/1.5 system-ui,sans-serif;opacity:.7">Template oleh <a href="https://wa.me/62895411120976" target="_blank" rel="noopener" style="color:inherit">@m.alif666</a></p>
 </body>
