@@ -50,7 +50,7 @@ window.PRODUK = [
     gambar: ['img/dorayaki.jpg']
   },
   {
-    id: 'sempol-gurih', nama: 'Sempol', kategori: 'Makanan', harga: 6000, stok: 50,
+    id: 'sempol-gurih', nama: 'Sempol', kategori: 'Makanan', harga: 5000, stok: 50,
     deskripsi: 'Sempol jajanan gurih berbahan dasar ayam dan tepung yang digoreng hingga renyah di luar, lembut di dalam, dan nikmat di setiap gigitan.',
     varian: [],
     gambar: ['img/sempol.jpg']
