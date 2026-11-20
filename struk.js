@@ -1,4 +1,4 @@
-/* Modul Struk Digital (PDF/Print & PNG Canvas) + Integrasi Supabase — proyek XII-E */
+/* Modul Struk Digital (PDF/Print & PNG Canvas) + Integrasi Supabase / Vercel API — proyek XII-E */
 (function (root) {
   'use strict';
 
@@ -39,16 +39,36 @@
     }
   }
 
-  function supabaseAktif(toko) {
+  function bersihkanBaseUrl(raw) {
+    return String(raw || '').trim().replace(/\/+$/, '').replace(/\/rest\/v1$/i, '');
+  }
+
+  function supabaseLangsungAktif(toko) {
     var sb = toko && toko.supabase;
     return !!(sb && sb.url && sb.anonKey && /^https?:\/\//i.test(sb.url.trim()));
   }
 
+  function apiVercelAktif(toko) {
+    var sb = toko && toko.supabase;
+    var endpoint = (sb && sb.apiEndpoint) || '/api/pesanan';
+    var pakaiHttp = typeof location !== 'undefined' && /^https?:$/i.test(location.protocol);
+    return !!(endpoint && pakaiHttp);
+  }
+
+  function supabaseAktif(toko) {
+    return supabaseLangsungAktif(toko) || apiVercelAktif(toko);
+  }
+
   function urlRest(toko, query) {
     var sb = toko.supabase;
-    var base = sb.url.trim().replace(/\/+$/, '');
+    var base = bersihkanBaseUrl(sb.url);
     var tabel = encodeURIComponent((sb.tabel || 'pesanan').trim());
     return base + '/rest/v1/' + tabel + (query || '');
+  }
+
+  function urlApiVercel(toko, query) {
+    var ep = (toko && toko.supabase && toko.supabase.apiEndpoint) || '/api/pesanan';
+    return ep.replace(/\/+$/, '') + (query || '');
   }
 
   function headerSupabase(toko, extra) {
@@ -98,9 +118,15 @@
       status: pesanan.status || 'Baru',
       pesan_wa: pesanan.pesan_wa || ''
     };
-    return fetch(urlRest(toko), {
+    var langsung = supabaseLangsungAktif(toko);
+    var target = langsung ? urlRest(toko) : urlApiVercel(toko);
+    var headers = langsung
+      ? headerSupabase(toko, { 'Prefer': 'return=representation' })
+      : { 'Content-Type': 'application/json' };
+
+    return fetch(target, {
       method: 'POST',
-      headers: headerSupabase(toko, { 'Prefer': 'return=representation' }),
+      headers: headers,
       body: JSON.stringify(payload)
     }).then(function (r) {
       if (!r.ok) {
@@ -108,7 +134,7 @@
       }
       return r.json();
     }).then(function (rows) {
-      var saved = Array.isArray(rows) && rows[0] ? rows[0] : pesanan;
+      var saved = Array.isArray(rows) && rows[0] ? rows[0] : (rows || pesanan);
       if (saved.id != null) {
         pesanan.id = saved.id;
         pesanan.created_at = saved.created_at || pesanan.created_at;
@@ -124,9 +150,13 @@
     if (!supabaseAktif(toko) || typeof fetch !== 'function') {
       return Promise.resolve({ ok: true, mode: 'lokal', data: bacaLokal() });
     }
-    return fetch(urlRest(toko, '?select=*&order=created_at.desc'), {
+    var langsung = supabaseLangsungAktif(toko);
+    var target = langsung ? urlRest(toko, '?select=*&order=created_at.desc') : urlApiVercel(toko);
+    var headers = langsung ? headerSupabase(toko) : { 'Accept': 'application/json' };
+
+    return fetch(target, {
       method: 'GET',
-      headers: headerSupabase(toko)
+      headers: headers
     }).then(function (r) {
       if (!r.ok) {
         return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ': ' + t); });
@@ -150,12 +180,18 @@
     if (!supabaseAktif(toko) || typeof fetch !== 'function') {
       return Promise.resolve({ ok: true, mode: 'lokal' });
     }
-    var filter = typeof idAtauKode === 'number' || /^\d+$/.test(String(idAtauKode))
-      ? '?id=eq.' + encodeURIComponent(idAtauKode)
-      : '?kode=eq.' + encodeURIComponent(idAtauKode);
-    return fetch(urlRest(toko, filter), {
+    var isNumericId = typeof idAtauKode === 'number' || /^\d+$/.test(String(idAtauKode));
+    var langsung = supabaseLangsungAktif(toko);
+    var target = langsung
+      ? urlRest(toko, isNumericId ? '?id=eq.' + encodeURIComponent(idAtauKode) : '?kode=eq.' + encodeURIComponent(idAtauKode))
+      : urlApiVercel(toko, isNumericId ? '?id=' + encodeURIComponent(idAtauKode) : '?kode=' + encodeURIComponent(idAtauKode));
+    var headers = langsung
+      ? headerSupabase(toko, { 'Prefer': 'return=representation' })
+      : { 'Content-Type': 'application/json' };
+
+    return fetch(target, {
       method: 'PATCH',
-      headers: headerSupabase(toko, { 'Prefer': 'return=representation' }),
+      headers: headers,
       body: JSON.stringify({ status: statusBaru })
     }).then(function (r) {
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ': ' + t); });
@@ -174,12 +210,16 @@
     if (!supabaseAktif(toko) || typeof fetch !== 'function') {
       return Promise.resolve({ ok: true, mode: 'lokal' });
     }
-    var filter = typeof idAtauKode === 'number' || /^\d+$/.test(String(idAtauKode))
-      ? '?id=eq.' + encodeURIComponent(idAtauKode)
-      : '?kode=eq.' + encodeURIComponent(idAtauKode);
-    return fetch(urlRest(toko, filter), {
+    var isNumericId = typeof idAtauKode === 'number' || /^\d+$/.test(String(idAtauKode));
+    var langsung = supabaseLangsungAktif(toko);
+    var target = langsung
+      ? urlRest(toko, isNumericId ? '?id=eq.' + encodeURIComponent(idAtauKode) : '?kode=eq.' + encodeURIComponent(idAtauKode))
+      : urlApiVercel(toko, isNumericId ? '?id=' + encodeURIComponent(idAtauKode) : '?kode=' + encodeURIComponent(idAtauKode));
+    var headers = langsung ? headerSupabase(toko) : { 'Accept': 'application/json' };
+
+    return fetch(target, {
       method: 'DELETE',
-      headers: headerSupabase(toko)
+      headers: headers
     }).then(function (r) {
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ': ' + t); });
       return { ok: true, mode: 'supabase' };
@@ -288,17 +328,14 @@
       canvas.height = Math.max(540, H);
       var ctx = canvas.getContext('2d');
 
-      // Latar putih bersih
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, W, canvas.height);
 
-      // Bingkai luar lembut
       ctx.strokeStyle = '#d7ddd4';
       ctx.lineWidth = 3;
       ctx.strokeRect(16, 16, W - 32, canvas.height - 32);
 
       var y = 66;
-      // Badge header
       ctx.fillStyle = '#e8ebe5';
       ctx.fillRect(W / 2 - 120, y - 24, 240, 34);
       ctx.fillStyle = '#3b4a3e';
@@ -307,13 +344,11 @@
       ctx.fillText('STRUK PEMESANAN', W / 2, y - 2);
       y += 42;
 
-      // Nama toko
       ctx.fillStyle = '#1b1d1a';
       ctx.font = '800 34px "DM Sans", system-ui, sans-serif';
       ctx.fillText(namaToko, W / 2, y);
       y += 30;
 
-      // Alamat
       ctx.fillStyle = '#555c54';
       ctx.font = '400 18px "DM Sans", system-ui, sans-serif';
       barisAlamat.forEach(function (b) {
@@ -337,7 +372,6 @@
       garisPutus(y);
       y += 34;
 
-      // Metadata
       var meta = [
         ['Kode Pesanan', p.kode],
         ['Tanggal', formatWaktu(p.created_at)],
@@ -370,7 +404,6 @@
       garisPutus(y);
       y += 34;
 
-      // Daftar item
       p.items.forEach(function (it) {
         var sub = (it.harga || 0) * (it.qty || 1);
         ctx.textAlign = 'left';
@@ -396,7 +429,6 @@
       garisPutus(y);
       y += 42;
 
-      // Total
       ctx.textAlign = 'left';
       ctx.fillStyle = '#1b1d1a';
       ctx.font = '800 24px "DM Sans", system-ui, sans-serif';
@@ -406,7 +438,6 @@
       ctx.fillText(rupiah(p.total, mu), W - PAD, y);
       y += 34;
 
-      // Kotak peringatan
       var kotakH = barisPeringatan.length * 28 + 34;
       ctx.fillStyle = '#eef3ec';
       ctx.fillRect(PAD, y, CW, kotakH);
@@ -505,6 +536,7 @@
     KETERANGAN_STRUK: KETERANGAN_STRUK,
     buatKodePesanan: buatKodePesanan,
     formatWaktu: formatWaktu,
+    bersihkanBaseUrl: bersihkanBaseUrl,
     supabaseAktif: supabaseAktif,
     bacaLokal: bacaLokal,
     simpanPesanan: simpanPesanan,

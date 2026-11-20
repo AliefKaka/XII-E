@@ -17,11 +17,13 @@ window.TOKO = {
     lat: -8.137445,
     lng: 113.223003
   },
-  // SUPABASE — isi Project URL dan Publishable/anon key dari dashboard Supabase
-  // agar seluruh pesanan otomatis tersimpan ke database dan tampil di halaman Admin.
+  // SUPABASE VIA VERCEL ENVIRONMENT VARIABLES (disarankan):
+  // Biarkan url & anonKey kosong di sini lalu atur SUPABASE_URL dan SUPABASE_ANON_KEY di Vercel
+  // (Settings -> Environment Variables). Browser akan otomatis memakai endpoint /api/pesanan.
   supabase: {
-    url: 'https://flwtdotnqdjutnfxmyzw.supabase.co/rest/v1/',      // Contoh: 'https://abcdefghijklmno.supabase.co'
-    anonKey: 'sb_publishable_eJwINfa4vXtkghrV-_i0XQ_JLPIBP8X',  // Contoh: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' atau 'sb_publishable_...'
+    apiEndpoint: '/api/pesanan',
+    url: '',      // Opsional jika tidak pakai Vercel: 'https://xxxxxxxxxxxx.supabase.co' (tanpa /rest/v1)
+    anonKey: '',  // Opsional jika tidak pakai Vercel: Publishable key 'sb_publishable_...'
     tabel: 'pesanan'
   },
   // AKUN ADMIN — digunakan untuk masuk ke halaman admin.html
