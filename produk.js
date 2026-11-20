@@ -6,7 +6,7 @@ window.TOKO = {
   nama: (window.TEMA && TEMA.nama) || 'D SECO', // nama toko diambil dari tema.js
   slogan: 'Lezat Dan Bergizi',
   // Nomor WhatsApp format internasional tanpa + dan tanpa spasi (62 = Indonesia)
-  wa: '62895411120976',
+  wa: '6285852848253',
   mataUang: 'Rp',
   // LOKASI TOKO / STAN (Takeaway) — atur koordinat lat & lng sesuka hati.
   // Cara dapat koordinat: buka Google Maps → klik kanan lokasi stan → salin angka koordinat (lat, lng).
