@@ -1,9 +1,10 @@
-/* Modul Struk Digital (PDF/Print & PNG Canvas) + Integrasi Supabase / Vercel API — proyek XII-E */
+/* Modul Struk Digital (PDF/Print & PNG Canvas) + Bukti Transfer + Integrasi Supabase / Vercel API — proyek XII-E */
 (function (root) {
   'use strict';
 
   var KUNCI_RIWAYAT = 'katalog-riwayat-pesanan';
   var KETERANGAN_STRUK = 'Mohon simpan struk untuk bukti pemesanan dan pengambilan.';
+  var KETERANGAN_STRUK_DELIVERY = 'Mohon simpan struk sebagai bukti pemesanan dan pembayaran.';
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -94,14 +95,59 @@
 
   function tulisLokal(list) {
     try {
-      localStorage.setItem(KUNCI_RIWAYAT, JSON.stringify((list || []).slice(0, 200)));
-    } catch (e) {}
+      localStorage.setItem(KUNCI_RIWAYAT, JSON.stringify((list || []).slice(0, 100)));
+    } catch (e) {
+      // Jika storage penuh karena gambar bukti, simpan ulang tanpa gambar pada riwayat lama
+      try {
+        var ringkas = (list || []).slice(0, 50).map(function (x, idx) {
+          if (idx === 0) return x;
+          var salin = Object.assign({}, x);
+          salin.bukti_bayar = '';
+          return salin;
+        });
+        localStorage.setItem(KUNCI_RIWAYAT, JSON.stringify(ringkas));
+      } catch (e2) {}
+    }
   }
 
   function simpanLokal(pesanan) {
     var list = bacaLokal().filter(function (x) { return x.kode !== pesanan.kode; });
     list.unshift(pesanan);
     tulisLokal(list);
+  }
+
+  function adalahDelivery(pesanan) {
+    var pg = String((pesanan && pesanan.pengiriman) || '').toLowerCase();
+    return pg.indexOf('delivery') > -1 || (pesanan && pesanan.metode_bayar === 'QRIS DANA');
+  }
+
+  function normalisasiPesanan(raw) {
+    var items = raw.items;
+    if (typeof items === 'string') {
+      try { items = JSON.parse(items); } catch (e) { items = []; }
+    }
+    var arrItems = Array.isArray(items) ? items : [];
+    var subtotalHitung = arrItems.reduce(function (s, i) { return s + (Number(i.harga) || 0) * (Number(i.qty) || 1); }, 0);
+    var ongkir = Number(raw.ongkir) || 0;
+    var total = raw.total != null ? Number(raw.total) : (subtotalHitung + ongkir);
+    return {
+      id: raw.id != null ? raw.id : null,
+      kode: raw.kode || 'ORD',
+      created_at: raw.created_at || raw.waktu || new Date().toISOString(),
+      nama: raw.nama || '-',
+      catatan: raw.catatan || '',
+      pengiriman: raw.pengiriman || 'Takeaway (Ambil di Stan)',
+      alamat: raw.alamat || '',
+      ongkir: ongkir,
+      subtotal: raw.subtotal != null ? Number(raw.subtotal) : subtotalHitung,
+      metode_bayar: raw.metode_bayar || 'Bayar di Stan',
+      status_bayar: raw.status_bayar || 'Belum Bayar',
+      bukti_bayar: raw.bukti_bayar || '',
+      items: arrItems,
+      total: total,
+      status: raw.status || 'Baru',
+      pesan_wa: raw.pesan_wa || ''
+    };
   }
 
   function simpanPesanan(pesanan, toko) {
@@ -113,6 +159,12 @@
       kode: pesanan.kode,
       nama: pesanan.nama,
       catatan: pesanan.catatan || '',
+      pengiriman: pesanan.pengiriman || 'Takeaway (Ambil di Stan)',
+      alamat: pesanan.alamat || '',
+      ongkir: Math.round(pesanan.ongkir || 0),
+      metode_bayar: pesanan.metode_bayar || 'Bayar di Stan',
+      status_bayar: pesanan.status_bayar || 'Belum Bayar',
+      bukti_bayar: pesanan.bukti_bayar || '',
       items: pesanan.items || [],
       total: Math.round(pesanan.total || 0),
       status: pesanan.status || 'Baru',
@@ -148,7 +200,7 @@
 
   function ambilSemuaPesanan(toko) {
     if (!supabaseAktif(toko) || typeof fetch !== 'function') {
-      return Promise.resolve({ ok: true, mode: 'lokal', data: bacaLokal() });
+      return Promise.resolve({ ok: true, mode: 'lokal', data: bacaLokal().map(normalisasiPesanan) });
     }
     var langsung = supabaseLangsungAktif(toko);
     var target = langsung ? urlRest(toko, '?select=*&order=created_at.desc') : urlApiVercel(toko);
@@ -166,14 +218,16 @@
       var list = Array.isArray(rows) ? rows.map(normalisasiPesanan) : [];
       return { ok: true, mode: 'supabase', data: list };
     }).catch(function (err) {
-      return { ok: false, mode: 'lokal', data: bacaLokal(), error: err && err.message ? err.message : String(err) };
+      return { ok: false, mode: 'lokal', data: bacaLokal().map(normalisasiPesanan), error: err && err.message ? err.message : String(err) };
     });
   }
 
-  function ubahStatusPesanan(idAtauKode, statusBaru, toko) {
+  function patchPesanan(idAtauKode, perubahan, toko) {
     var list = bacaLokal();
     list.forEach(function (x) {
-      if (String(x.id) === String(idAtauKode) || x.kode === idAtauKode) x.status = statusBaru;
+      if (String(x.id) === String(idAtauKode) || x.kode === idAtauKode) {
+        Object.keys(perubahan).forEach(function (k) { x[k] = perubahan[k]; });
+      }
     });
     tulisLokal(list);
 
@@ -192,13 +246,21 @@
     return fetch(target, {
       method: 'PATCH',
       headers: headers,
-      body: JSON.stringify({ status: statusBaru })
+      body: JSON.stringify(perubahan)
     }).then(function (r) {
       if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ': ' + t); });
       return { ok: true, mode: 'supabase' };
     }).catch(function (err) {
       return { ok: false, mode: 'lokal', error: err && err.message ? err.message : String(err) };
     });
+  }
+
+  function ubahStatusPesanan(idAtauKode, statusBaru, toko) {
+    return patchPesanan(idAtauKode, { status: statusBaru }, toko);
+  }
+
+  function ubahStatusBayar(idAtauKode, statusBayarBaru, toko) {
+    return patchPesanan(idAtauKode, { status_bayar: statusBayarBaru }, toko);
   }
 
   function hapusPesanan(idAtauKode, toko) {
@@ -228,30 +290,62 @@
     });
   }
 
-  function normalisasiPesanan(raw) {
-    var items = raw.items;
-    if (typeof items === 'string') {
-      try { items = JSON.parse(items); } catch (e) { items = []; }
+  function kompresGambar(file, maxLebar, kualitas) {
+    return new Promise(function (resolve, reject) {
+      if (!file) return resolve('');
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('Gagal membaca gambar')); };
+      reader.onload = function (ev) {
+        var img = new Image();
+        img.onerror = function () { resolve(ev.target.result || ''); };
+        img.onload = function () {
+          var batas = maxLebar || 720;
+          var w = img.width, h = img.height;
+          if (w > batas) {
+            h = Math.round(h * (batas / w));
+            w = batas;
+          }
+          var c = document.createElement('canvas');
+          c.width = w;
+          c.height = h;
+          var ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          try {
+            resolve(c.toDataURL('image/jpeg', kualitas || 0.72));
+          } catch (e) {
+            resolve(ev.target.result || '');
+          }
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function dataUrlKeFile(dataUrl, namaFile) {
+    if (!dataUrl || typeof File !== 'function') return null;
+    try {
+      var bagian = dataUrl.split(',');
+      var mimeMatch = bagian[0].match(/:(.*?);/);
+      var mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      var bin = atob(bagian[1]);
+      var arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return new File([arr], namaFile || 'bukti-transfer.jpg', { type: mime });
+    } catch (e) {
+      return null;
     }
-    return {
-      id: raw.id != null ? raw.id : null,
-      kode: raw.kode || 'ORD',
-      created_at: raw.created_at || raw.waktu || new Date().toISOString(),
-      nama: raw.nama || '-',
-      catatan: raw.catatan || '',
-      items: Array.isArray(items) ? items : [],
-      total: Number(raw.total) || 0,
-      status: raw.status || 'Baru',
-      pesan_wa: raw.pesan_wa || ''
-    };
   }
 
   function renderStrukHTML(pesanan, toko) {
     var p = normalisasiPesanan(pesanan);
     var mu = (toko && toko.mataUang) || 'Rp';
     var namaToko = (toko && toko.nama) || 'D SECO';
-    var alamat = (toko && toko.lokasi && toko.lokasi.alamat) || '';
+    var alamatStan = (toko && toko.lokasi && toko.lokasi.alamat) || '';
     var jamBuka = (toko && toko.lokasi && toko.lokasi.jamBuka) || '';
+    var delivery = adalahDelivery(p);
     var barisItem = p.items.map(function (it) {
       var sub = (it.harga || 0) * (it.qty || 1);
       return '<div class="struk-item">' +
@@ -262,26 +356,36 @@
       '</div>';
     }).join('');
 
+    var barisRingkas = '';
+    if (delivery) {
+      barisRingkas =
+        '<div class="struk-subbaris"><span>Subtotal</span><span>' + esc(rupiah(p.subtotal, mu)) + '</span></div>' +
+        '<div class="struk-subbaris"><span>Ongkir</span><span>' + (p.ongkir > 0 ? esc(rupiah(p.ongkir, mu)) : 'GRATIS') + '</span></div>';
+    }
+
     return '<div class="struk-kertas">' +
       '<div class="struk-kepala">' +
         '<span class="struk-lencana">STRUK PEMESANAN</span>' +
         '<h3>' + esc(namaToko) + '</h3>' +
-        (alamat ? '<p class="struk-alamat">' + esc(alamat) + '</p>' : '') +
+        (alamatStan ? '<p class="struk-alamat">' + esc(alamatStan) + '</p>' : '') +
         (jamBuka ? '<p class="struk-alamat">Jam buka: ' + esc(jamBuka) + '</p>' : '') +
       '</div>' +
       '<div class="struk-meta">' +
         '<div><span>Kode Pesanan</span><b>' + esc(p.kode) + '</b></div>' +
         '<div><span>Tanggal</span><b>' + esc(formatWaktu(p.created_at)) + '</b></div>' +
         '<div><span>Pemesan</span><b>' + esc(p.nama) + '</b></div>' +
-        '<div><span>Pengambilan</span><b>Takeaway (Ambil di stan)</b></div>' +
+        '<div><span>Pengiriman</span><b>' + esc(p.pengiriman) + '</b></div>' +
+        (delivery && p.alamat ? '<div><span>Alamat Kirim</span><b>' + esc(p.alamat) + '</b></div>' : '') +
+        '<div><span>Pembayaran</span><b>' + esc(p.metode_bayar) + '</b></div>' +
         (p.catatan ? '<div><span>Catatan</span><b>' + esc(p.catatan) + '</b></div>' : '') +
       '</div>' +
       '<div class="struk-daftar">' + barisItem + '</div>' +
+      barisRingkas +
       '<div class="struk-total">' +
         '<span>TOTAL BAYAR</span><strong>' + esc(rupiah(p.total, mu)) + '</strong>' +
       '</div>' +
       '<div class="struk-peringatan">' +
-        '<b>Penting:</b> ' + esc(KETERANGAN_STRUK) +
+        '<b>Penting:</b> ' + esc(delivery ? KETERANGAN_STRUK_DELIVERY : KETERANGAN_STRUK) +
       '</div>' +
     '</div>';
   }
@@ -308,24 +412,28 @@
       var p = normalisasiPesanan(pesanan);
       var mu = (toko && toko.mataUang) || 'Rp';
       var namaToko = (toko && toko.nama) || 'D SECO';
-      var alamat = (toko && toko.lokasi && toko.lokasi.alamat) || '';
+      var alamatStan = (toko && toko.lokasi && toko.lokasi.alamat) || '';
+      var delivery = adalahDelivery(p);
       var W = 720, PAD = 44, CW = W - PAD * 2;
 
       var ukur = document.createElement('canvas').getContext('2d');
       ukur.font = '400 20px "DM Sans", system-ui, sans-serif';
-      var barisAlamat = alamat ? bungkusTeks(ukur, alamat, CW) : [];
+      var barisAlamat = alamatStan ? bungkusTeks(ukur, alamatStan, CW) : [];
+      var barisAlamatKirim = (delivery && p.alamat) ? bungkusTeks(ukur, 'Alamat Kirim: ' + p.alamat, CW) : [];
       var barisCatatan = p.catatan ? bungkusTeks(ukur, 'Catatan: ' + p.catatan, CW) : [];
-      var barisPeringatan = bungkusTeks(ukur, 'Penting: ' + KETERANGAN_STRUK, CW - 36);
+      var teksPeringatan = 'Penting: ' + (delivery ? KETERANGAN_STRUK_DELIVERY : KETERANGAN_STRUK);
+      var barisPeringatan = bungkusTeks(ukur, teksPeringatan, CW - 36);
 
       var tinggiItem = 0;
       p.items.forEach(function (it) {
         tinggiItem += 32 + (it.label ? 24 : 0) + 26 + 18;
       });
 
-      var H = 190 + barisAlamat.length * 26 + 155 + barisCatatan.length * 26 + 34 + tinggiItem + 95 + (barisPeringatan.length * 28 + 44) + 56;
+      var tinggiSub = delivery ? 68 : 0;
+      var H = 190 + barisAlamat.length * 26 + 195 + barisAlamatKirim.length * 26 + barisCatatan.length * 26 + 34 + tinggiItem + tinggiSub + 95 + (barisPeringatan.length * 28 + 44) + 56;
       var canvas = document.createElement('canvas');
       canvas.width = W;
-      canvas.height = Math.max(540, H);
+      canvas.height = Math.max(580, H);
       var ctx = canvas.getContext('2d');
 
       ctx.fillStyle = '#ffffff';
@@ -376,7 +484,8 @@
         ['Kode Pesanan', p.kode],
         ['Tanggal', formatWaktu(p.created_at)],
         ['Pemesan', p.nama],
-        ['Pengambilan', 'Takeaway (Ambil di stan)']
+        ['Pengiriman', p.pengiriman],
+        ['Pembayaran', p.metode_bayar]
       ];
       meta.forEach(function (row) {
         ctx.textAlign = 'left';
@@ -389,6 +498,16 @@
         ctx.fillText(row[1], W - PAD, y);
         y += 32;
       });
+
+      if (barisAlamatKirim.length) {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#474f46';
+        ctx.font = '500 18px "DM Sans", system-ui, sans-serif';
+        barisAlamatKirim.forEach(function (b) {
+          ctx.fillText(b, PAD, y);
+          y += 26;
+        });
+      }
 
       if (barisCatatan.length) {
         ctx.textAlign = 'left';
@@ -427,7 +546,29 @@
       });
 
       garisPutus(y);
-      y += 42;
+      y += 34;
+
+      if (delivery) {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#5c635b';
+        ctx.font = '500 19px "DM Sans", system-ui, sans-serif';
+        ctx.fillText('Subtotal', PAD, y);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#1b1d1a';
+        ctx.font = '700 19px "DM Sans", system-ui, sans-serif';
+        ctx.fillText(rupiah(p.subtotal, mu), W - PAD, y);
+        y += 30;
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#5c635b';
+        ctx.font = '500 19px "DM Sans", system-ui, sans-serif';
+        ctx.fillText('Ongkir', PAD, y);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = p.ongkir > 0 ? '#1b1d1a' : '#177a41';
+        ctx.font = '700 19px "DM Sans", system-ui, sans-serif';
+        ctx.fillText(p.ongkir > 0 ? rupiah(p.ongkir, mu) : 'GRATIS', W - PAD, y);
+        y += 36;
+      }
 
       ctx.textAlign = 'left';
       ctx.fillStyle = '#1b1d1a';
@@ -498,6 +639,39 @@
     });
   }
 
+  function bagikanBuktiKeWA(pesanan, fileBukti, linkWAUrl) {
+    var p = normalisasiPesanan(pesanan);
+    var file = fileBukti || dataUrlKeFile(p.bukti_bayar, 'bukti-' + p.kode.toLowerCase() + '.jpg');
+    if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      return navigator.share({
+        title: 'Bukti Transfer ' + p.kode,
+        text: p.pesan_wa || ('Pesanan ' + p.kode),
+        files: [file]
+      }).then(function () {
+        return { metode: 'share' };
+      }).catch(function (err) {
+        if (err && err.name === 'AbortError') return { metode: 'batal' };
+        return fallbackBuktiDanWA(file, p, linkWAUrl);
+      });
+    }
+    return Promise.resolve(fallbackBuktiDanWA(file, p, linkWAUrl));
+  }
+
+  function fallbackBuktiDanWA(file, p, linkWAUrl) {
+    if (file) {
+      var url = URL.createObjectURL(file);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'bukti-transfer-' + p.kode.toLowerCase() + '.jpg';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+    }
+    if (linkWAUrl) window.open(linkWAUrl, '_blank', 'noopener');
+    return { metode: 'fallback' };
+  }
+
   function fallbackUnduhDanWA(blob, p, linkWAUrl) {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -534,6 +708,7 @@
 
   var API = {
     KETERANGAN_STRUK: KETERANGAN_STRUK,
+    KETERANGAN_STRUK_DELIVERY: KETERANGAN_STRUK_DELIVERY,
     buatKodePesanan: buatKodePesanan,
     formatWaktu: formatWaktu,
     bersihkanBaseUrl: bersihkanBaseUrl,
@@ -542,12 +717,16 @@
     simpanPesanan: simpanPesanan,
     ambilSemuaPesanan: ambilSemuaPesanan,
     ubahStatusPesanan: ubahStatusPesanan,
+    ubahStatusBayar: ubahStatusBayar,
     hapusPesanan: hapusPesanan,
     normalisasiPesanan: normalisasiPesanan,
+    kompresGambar: kompresGambar,
+    dataUrlKeFile: dataUrlKeFile,
     renderStrukHTML: renderStrukHTML,
     gambarStrukCanvas: gambarStrukCanvas,
     unduhStrukPNG: unduhStrukPNG,
     bagikanStrukKeWA: bagikanStrukKeWA,
+    bagikanBuktiKeWA: bagikanBuktiKeWA,
     cetakStrukPDF: cetakStrukPDF
   };
 

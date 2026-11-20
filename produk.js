@@ -17,6 +17,22 @@ window.TOKO = {
     lat: -8.137244,
     lng: 113.223281
   },
+  // PENGATURAN PENGIRIMAN (Takeaway & Delivery)
+  // Pembelian total >= minGratisOngkir item (bebas 1 produk atau mix) otomatis gratis ongkir.
+  pengiriman: {
+    minGratisOngkir: 5,
+    opsi: [
+      { id: 'takeaway', label: 'Takeaway (Ambil di Stan)', ongkir: 0, delivery: false },
+      { id: 'lumajang-kota', label: 'Delivery — Lumajang Kota', ongkir: 3000, delivery: true },
+      { id: 'lain', label: 'Delivery — Lainnya', ongkir: 5000, delivery: true }
+    ]
+  },
+  // PENGATURAN PEMBAYARAN QRIS DANA (khusus Delivery)
+  // Letakkan gambar QRIS DANA milikmu di img/qris.jpg
+  pembayaran: {
+    qrisGambar: 'img/qris.jpg',
+    qrisNama: 'QRIS DANA — D SECO'
+  },
   // SUPABASE VIA VERCEL ENVIRONMENT VARIABLES (disarankan):
   // Biarkan url & anonKey kosong di sini lalu atur SUPABASE_URL dan SUPABASE_ANON_KEY di Vercel
   // (Settings -> Environment Variables). Browser akan otomatis memakai endpoint /api/pesanan.

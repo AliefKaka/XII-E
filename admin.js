@@ -85,7 +85,7 @@
       if (!cocokStatus) return false;
       if (!q) return true;
       var teksItem = (p.items || []).map(function (i) { return i.nama + ' ' + (i.label || ''); }).join(' ');
-      return (p.kode + ' ' + p.nama + ' ' + (p.catatan || '') + ' ' + teksItem).toLowerCase().indexOf(q) > -1;
+      return (p.kode + ' ' + p.nama + ' ' + (p.catatan || '') + ' ' + (p.pengiriman || '') + ' ' + (p.alamat || '') + ' ' + (p.metode_bayar || '') + ' ' + teksItem).toLowerCase().indexOf(q) > -1;
     });
 
     var wadah = $('#daftarPesanan');
@@ -95,12 +95,18 @@
     }
 
     var opsiStatus = ['Baru', 'Diproses', 'Selesai', 'Dibatalkan'];
+    var opsiBayar = ['Belum Bayar', 'Menunggu Verifikasi', 'Lunas'];
     wadah.innerHTML = list.map(function (p, idx) {
       var kunciId = p.id != null ? String(p.id) : p.kode;
       var statusSaatIni = p.status || 'Baru';
+      var statusBayar = p.status_bayar || 'Belum Bayar';
+      var isDelivery = String(p.pengiriman || '').toLowerCase().indexOf('delivery') > -1 || p.metode_bayar === 'QRIS DANA';
       var itemHtml = (p.items || []).map(function (it) {
         return '<div><span>' + esc(it.qty) + 'x ' + esc(it.nama) + (it.label ? ' <small class="redup">(' + esc(it.label) + ')</small>' : '') + '</span><b>' + esc(rp((it.harga || 0) * (it.qty || 1))) + '</b></div>';
       }).join('');
+      if (isDelivery) {
+        itemHtml += '<div class="redup"><span>Ongkir</span><b>' + (p.ongkir > 0 ? esc(rp(p.ongkir)) : 'GRATIS') + '</b></div>';
+      }
 
       return '<article class="pesanan-kartu" data-kode="' + esc(p.kode) + '" data-id="' + esc(kunciId) + '">' +
         '<div class="pesanan-kepala">' +
@@ -108,13 +114,17 @@
             '<span class="pesanan-kode">' + esc(p.kode) + '</span>' +
             '<span class="pesanan-waktu">' + esc(StrukKit.formatWaktu(p.created_at)) + '</span>' +
           '</div>' +
-          '<span class="admin-koneksi' + (statusSaatIni === 'Dibatalkan' ? ' lokal' : '') + '"><i></i>' + esc(statusSaatIni) + '</span>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+            '<span class="admin-koneksi' + (statusBayar === 'Lunas' ? '' : ' lokal') + '"><i></i>' + esc(p.metode_bayar || 'Bayar di Stan') + ' · ' + esc(statusBayar) + '</span>' +
+            '<span class="admin-koneksi' + (statusSaatIni === 'Dibatalkan' ? ' lokal' : '') + '"><i></i>' + esc(statusSaatIni) + '</span>' +
+          '</div>' +
         '</div>' +
         '<div class="pesanan-isi">' +
           '<div class="pesanan-form">' +
             '<small>Data Formulir Pemesan</small>' +
             '<b>' + esc(p.nama) + '</b>' +
-            '<span>Pengambilan: Takeaway (Ambil di stan)</span>' +
+            '<span>Pengiriman: ' + esc(p.pengiriman || 'Takeaway (Ambil di Stan)') + '</span>' +
+            (isDelivery && p.alamat ? '<span>Alamat: ' + esc(p.alamat) + '</span>' : '') +
             '<span>Catatan: ' + esc(p.catatan || '-') + '</span>' +
           '</div>' +
           '<div class="pesanan-items">' +
@@ -128,6 +138,10 @@
             '<select class="ubah-status" data-id="' + esc(kunciId) + '" aria-label="Ubah status pesanan ' + esc(p.kode) + '">' +
               opsiStatus.map(function (o) { return '<option value="' + o + '"' + (o === statusSaatIni ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
             '</select>' +
+            '<select class="ubah-bayar" data-id="' + esc(kunciId) + '" aria-label="Ubah status bayar ' + esc(p.kode) + '">' +
+              opsiBayar.map(function (o) { return '<option value="' + o + '"' + (o === statusBayar ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+            '</select>' +
+            (p.bukti_bayar ? '<button type="button" class="tombol-sekunder" data-bukti="' + idx + '">Bukti Transfer</button>' : '') +
             '<button type="button" class="tombol-sekunder" data-struk="' + idx + '">Lihat Struk / PDF</button>' +
             '<button type="button" class="tombol-sekunder tombol-bahaya" data-hapus="' + esc(kunciId) + '">Hapus</button>' +
           '</div>' +
@@ -165,6 +179,29 @@
           .then(function () { toast('Gambar struk tersimpan'); })
           .catch(function () { toast('Gagal mengunduh gambar'); });
       }
+    };
+  }
+
+  function bukaBuktiAdmin(pesanan) {
+    var modal = $('#strukModal'), isi = $('#strukModalIsi');
+    isi.innerHTML =
+      '<div class="struk-modal-bungkus">' +
+        '<header class="struk-modal-kepala">' +
+          '<div><h2>Bukti Transfer ' + esc(pesanan.kode) + '</h2><span class="struk-status">' + esc(pesanan.nama) + ' · ' + esc(rp(pesanan.total)) + '</span></div>' +
+          '<button class="ikon-btn" id="tutupStruk" aria-label="Tutup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
+        '</header>' +
+        '<div class="struk-modal-badan" style="text-align:center">' +
+          '<img src="' + esc(pesanan.bukti_bayar) + '" alt="Bukti transfer" style="max-width:100%;max-height:60vh;border-radius:12px;border:1px solid var(--garis)">' +
+        '</div>' +
+        '<div class="struk-aksi">' +
+          '<a class="tombol-sekunder" href="' + esc(pesanan.bukti_bayar) + '" download="bukti-' + esc(pesanan.kode.toLowerCase()) + '.jpg">Download Bukti Transfer</a>' +
+        '</div>' +
+      '</div>';
+
+    if (!modal.open) modal.showModal();
+    isi.onclick = function (e) {
+      var btn = e.target.closest('button');
+      if (btn && btn.id === 'tutupStruk') modal.close();
     };
   }
 
@@ -206,25 +243,41 @@
   $('#filterStatus').onchange = renderDaftar;
 
   $('#daftarPesanan').addEventListener('change', function (e) {
-    var sel = e.target.closest('.ubah-status');
-    if (!sel) return;
-    var id = sel.dataset.id, statusBaru = sel.value;
-    StrukKit.ubahStatusPesanan(id, statusBaru, TOKO).then(function (res) {
-      semuaPesanan.forEach(function (x) {
-        if (String(x.id) === id || x.kode === id) x.status = statusBaru;
+    var selStatus = e.target.closest('.ubah-status');
+    if (selStatus) {
+      var id = selStatus.dataset.id, statusBaru = selStatus.value;
+      StrukKit.ubahStatusPesanan(id, statusBaru, TOKO).then(function (res) {
+        semuaPesanan.forEach(function (x) {
+          if (String(x.id) === id || x.kode === id) x.status = statusBaru;
+        });
+        renderStatistik();
+        renderDaftar();
+        toast(res.ok ? 'Status diperbarui menjadi ' + statusBaru : 'Status diperbarui lokal (cek Supabase)');
       });
-      renderStatistik();
-      renderDaftar();
-      toast(res.ok ? 'Status diperbarui menjadi ' + statusBaru : 'Status diperbarui lokal (cek Supabase)');
-    });
+      return;
+    }
+    var selBayar = e.target.closest('.ubah-bayar');
+    if (selBayar) {
+      var idB = selBayar.dataset.id, bayarBaru = selBayar.value;
+      StrukKit.ubahStatusBayar(idB, bayarBaru, TOKO).then(function (res) {
+        semuaPesanan.forEach(function (x) {
+          if (String(x.id) === idB || x.kode === idB) x.status_bayar = bayarBaru;
+        });
+        renderDaftar();
+        toast(res.ok ? 'Status pembayaran: ' + bayarBaru : 'Status bayar diperbarui lokal (cek Supabase)');
+      });
+    }
   });
 
   $('#daftarPesanan').addEventListener('click', function (e) {
     var btn = e.target.closest('button'); if (!btn) return;
+    var list = $('#daftarPesanan')._tampil || [];
     if (btn.dataset.struk != null) {
-      var list = $('#daftarPesanan')._tampil || [];
       var item = list[+btn.dataset.struk];
       if (item) bukaStrukAdmin(item);
+    } else if (btn.dataset.bukti != null) {
+      var itemB = list[+btn.dataset.bukti];
+      if (itemB && itemB.bukti_bayar) bukaBuktiAdmin(itemB);
     } else if (btn.dataset.hapus) {
       var id = btn.dataset.hapus;
       if (!confirm('Hapus pesanan ini secara permanen?')) return;

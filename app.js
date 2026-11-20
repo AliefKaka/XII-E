@@ -3,6 +3,12 @@
 (function (root) {
   'use strict';
 
+  var OPSI_PENGIRIMAN_DEFAULT = [
+    { id: 'takeaway', label: 'Takeaway (Ambil di Stan)', ongkir: 0, delivery: false },
+    { id: 'lumajang-kota', label: 'Delivery — Lumajang Kota', ongkir: 3000, delivery: true },
+    { id: 'lain', label: 'Delivery — Lainnya', ongkir: 5000, delivery: true }
+  ];
+
   // ================= Logika murni (bisa diuji di Node) =================
   function rupiah(n, mu) { return (mu || 'Rp') + Math.round(n || 0).toLocaleString('id-ID'); }
 
@@ -13,9 +19,39 @@
     return h;
   }
 
-  function hitungTotal(items) {
-    var total = items.reduce(function (s, i) { return s + i.harga * i.qty; }, 0);
-    return { subtotal: total, total: total };
+  function daftarPengiriman(toko) {
+    var list = toko && toko.pengiriman && Array.isArray(toko.pengiriman.opsi) && toko.pengiriman.opsi.length
+      ? toko.pengiriman.opsi
+      : OPSI_PENGIRIMAN_DEFAULT;
+    return list;
+  }
+
+  function cariPengiriman(id, toko) {
+    var list = daftarPengiriman(toko);
+    return list.find(function (o) { return o.id === id; }) || list[0];
+  }
+
+  function hitungTotal(items, pengirimanId, toko) {
+    var subtotal = items.reduce(function (s, i) { return s + i.harga * i.qty; }, 0);
+    var totalQty = items.reduce(function (s, i) { return s + (Number(i.qty) || 0); }, 0);
+    var opsi = cariPengiriman(pengirimanId || 'takeaway', toko);
+    var minGratis = (toko && toko.pengiriman && Number(toko.pengiriman.minGratisOngkir)) || 5;
+    var delivery = !!opsi.delivery;
+    var ongkirAsli = delivery ? (Number(opsi.ongkir) || 0) : 0;
+    var gratisOngkir = delivery && totalQty >= minGratis;
+    var ongkir = gratisOngkir ? 0 : ongkirAsli;
+    return {
+      subtotal: subtotal,
+      totalQty: totalQty,
+      ongkir: ongkir,
+      ongkirAsli: ongkirAsli,
+      gratisOngkir: gratisOngkir,
+      minGratis: minGratis,
+      delivery: delivery,
+      pengirimanId: opsi.id,
+      pengirimanLabel: opsi.label,
+      total: subtotal + ongkir
+    };
   }
 
   function linkMaps(lokasi) {
@@ -29,19 +65,40 @@
   }
 
   function buatPesan(items, pembeli, toko, kode) {
-    var t = hitungTotal(items), mu = toko.mataUang;
-    var baris = ['Halo *' + toko.nama + '*, saya mau pesan (Takeaway):'];
+    var pb = pembeli || {};
+    var t = hitungTotal(items, pb.pengirimanId, toko), mu = (toko && toko.mataUang) || 'Rp';
+    var baris = ['Halo *' + toko.nama + '*, saya mau pesan (' + (t.delivery ? 'Delivery' : 'Takeaway') + '):'];
     if (kode) baris.push('*Kode Pesanan: ' + kode + '*');
     baris.push('');
     items.forEach(function (i, n) {
       baris.push((n + 1) + '. *' + i.nama + '*' + (i.label ? ' (' + i.label + ')' : ''));
       baris.push('   ' + i.qty + ' x ' + rupiah(i.harga, mu) + ' = ' + rupiah(i.qty * i.harga, mu));
     });
-    baris.push('', '*Total: ' + rupiah(t.total, mu) + '*', '');
-    baris.push('Nama: ' + (pembeli.nama || '-'));
-    baris.push('Pengambilan: Takeaway (Ambil di lokasi)');
-    if (pembeli.catatan) baris.push('Catatan: ' + pembeli.catatan);
-    baris.push('', '_Struk pemesanan sudah saya simpan untuk bukti pengambilan._', 'Terima kasih!');
+    baris.push('');
+    if (t.delivery) {
+      baris.push('Subtotal: ' + rupiah(t.subtotal, mu));
+      baris.push('Ongkir (' + t.pengirimanLabel + '): ' + (t.gratisOngkir ? 'GRATIS (Min. ' + t.minGratis + ' item)' : rupiah(t.ongkir, mu)));
+      baris.push('*Total Bayar: ' + rupiah(t.total, mu) + '*');
+    } else {
+      baris.push('*Total: ' + rupiah(t.total, mu) + '*');
+    }
+    baris.push('');
+    baris.push('Nama: ' + (pb.nama || '-'));
+    if (t.delivery) {
+      baris.push('Pengiriman: ' + t.pengirimanLabel);
+      baris.push('Alamat Lengkap: ' + (pb.alamat || '-'));
+      baris.push('Pembayaran: QRIS DANA (Bukti transfer terlampir)');
+    } else {
+      baris.push('Pengambilan: Takeaway (Ambil di lokasi)');
+    }
+    if (pb.catatan) baris.push('Catatan: ' + pb.catatan);
+    baris.push('');
+    if (t.delivery) {
+      baris.push('_Bukti transfer QRIS DANA saya kirimkan bersama pesan ini._');
+    } else {
+      baris.push('_Struk pemesanan sudah saya simpan untuk bukti pengambilan._');
+    }
+    baris.push('Terima kasih!');
     return baris.join('\n');
   }
 
@@ -91,18 +148,28 @@
       tas: '<path d="M96 70l44 70 44-70" stroke="' + a + '" stroke-width="6" fill="none"/><rect x="88" y="120" width="104" height="96" rx="20" fill="' + w + '"/><path d="M88 156h104" stroke="' + a + '" stroke-width="3" opacity=".6"/><rect x="128" y="148" width="24" height="16" rx="3" fill="' + a + '"/>',
       tatakan: '<ellipse cx="140" cy="150" rx="70" ry="70" fill="' + w + '"/><g fill="none" stroke="' + a + '" stroke-width="4" opacity=".7"><circle cx="140" cy="150" r="54"/><circle cx="140" cy="150" r="38"/><circle cx="140" cy="150" r="22"/></g>'
     }[g.bentuk] || '';
-    // latar transparan: warna kotak gambar diatur CSS (.kartu-gambar dll.) supaya ikut tema & mode gelap
     s += '<ellipse cx="140" cy="238" rx="74" ry="9" fill="#000" opacity=".13"/><ellipse cx="140" cy="238" rx="46" ry="5" fill="#000" opacity=".1"/>';
     s += '<g transform="rotate(' + (sudut ? (sudut % 2 ? -8 : 6) : 0) + ' 140 150)">' + bentuk + '</g>';
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 280">' + s + '</svg>');
   }
   function srcGambar(g, i) { if (!g) return (window.TOKO && TOKO.fotoKosong) || ''; return typeof g === 'string' ? g : ilustrasi(g, i || 0); }
-  // foto gagal dimuat → ganti placeholder img/foto-produk.svg (sekali saja)
   if (typeof document !== 'undefined') {
-    document.addEventListener('error', function (e) { var t = e.target; if (t && t.tagName === 'IMG' && !t.dataset.cadangan && window.TOKO && TOKO.fotoKosong && !t.closest('.merek-ikon')) { t.dataset.cadangan = '1'; t.src = TOKO.fotoKosong; } }, true);
+    document.addEventListener('error', function (e) {
+      var t = e.target;
+      if (!t || t.tagName !== 'IMG') return;
+      if (t.id === 'qrisGambar') {
+        t.hidden = true;
+        var k = document.getElementById('qrisKosong');
+        if (k) k.hidden = false;
+        return;
+      }
+      if (!t.dataset.cadangan && window.TOKO && TOKO.fotoKosong && !t.closest('.merek-ikon') && !t.closest('.bukti-preview')) {
+        t.dataset.cadangan = '1';
+        t.src = TOKO.fotoKosong;
+      }
+    }, true);
   }
 
-  // Logo di header: gambar TOKO.logo, fallback inisial nama toko bila kosong/gagal dimuat
   function pasangLogo() {
     var el = document.querySelector('.merek-ikon'); if (!el) return;
     var inisial = function () { el.classList.remove('ada-logo'); el.textContent = ((window.TOKO && TOKO.nama) || 'T').trim().charAt(0).toUpperCase(); };
@@ -110,7 +177,7 @@
     var img = new Image(); img.alt = ''; img.onerror = inisial; img.src = TOKO.logo;
     el.textContent = ''; el.appendChild(img); el.classList.add('ada-logo');
   }
-  var API = { rupiah: rupiah, hargaVarian: hargaVarian, hitungTotal: hitungTotal, linkMaps: linkMaps, embedMaps: embedMaps, buatPesan: buatPesan, linkWA: linkWA, parseCSV: parseCSV, produkDariCSV: produkDariCSV, ilustrasi: ilustrasi };
+  var API = { rupiah: rupiah, hargaVarian: hargaVarian, daftarPengiriman: daftarPengiriman, cariPengiriman: cariPengiriman, hitungTotal: hitungTotal, linkMaps: linkMaps, embedMaps: embedMaps, buatPesan: buatPesan, linkWA: linkWA, parseCSV: parseCSV, produkDariCSV: produkDariCSV, ilustrasi: ilustrasi };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; return; }
   root.__katalog = API;
 
@@ -121,12 +188,90 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function rp(n) { return rupiah(n, TOKO.mataUang); }
   var simpanan = { get: function (k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
-  var tt; function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('tampil'); clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2400); }
+  var tt; function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('tampil'); clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2600); }
 
   var keranjang = simpanan.get('katalog-keranjang', []);
   var katAktif = 'Semua';
+  var alamatDeliverySimpan = '';
+  var buktiFileAktif = null;
+  var buktiDataUrlAktif = '';
 
   function cari(id) { return PRODUK.find(function (p) { return p.id === id; }); }
+
+  function pengirimanAktifId() {
+    var sel = $('#pilihPengiriman');
+    return (sel && sel.value) || 'takeaway';
+  }
+
+  function renderOpsiPengiriman() {
+    var sel = $('#pilihPengiriman');
+    if (!sel) return;
+    var opsi = daftarPengiriman(TOKO);
+    sel.innerHTML = opsi.map(function (o) {
+      var biaya = o.delivery ? ' (' + rp(o.ongkir) + ')' : ' (Gratis)';
+      return '<option value="' + esc(o.id) + '">' + esc(o.label + biaya) + '</option>';
+    }).join('');
+  }
+
+  function perbaruiModePengiriman() {
+    var id = pengirimanAktifId();
+    var opsi = cariPengiriman(id, TOKO);
+    var delivery = !!opsi.delivery;
+    var inputAlamat = $('#inputAlamat');
+    var judulAlamat = $('#judulAlamat');
+    var blokQris = $('#blokQris');
+    var inputBukti = $('#inputBukti');
+    var infoStruk = $('#infoStruk');
+    var alamatStan = (TOKO.lokasi && TOKO.lokasi.alamat) || '';
+
+    if (inputAlamat) {
+      if (delivery) {
+        inputAlamat.readOnly = false;
+        inputAlamat.required = true;
+        inputAlamat.classList.remove('alamat-terkunci');
+        inputAlamat.value = alamatDeliverySimpan || '';
+        if (judulAlamat) judulAlamat.textContent = 'Alamat Lengkap Pengiriman (Wajib)';
+      } else {
+        // Simpan dulu jika sebelumnya sedang mengisi alamat delivery
+        if (!inputAlamat.readOnly && inputAlamat.value.trim()) {
+          alamatDeliverySimpan = inputAlamat.value.trim();
+        }
+        inputAlamat.readOnly = true;
+        inputAlamat.required = false;
+        inputAlamat.classList.add('alamat-terkunci');
+        inputAlamat.value = alamatStan;
+        if (judulAlamat) judulAlamat.textContent = 'Alamat Stan (Terkunci — Takeaway)';
+      }
+    }
+
+    if (blokQris) blokQris.hidden = !delivery;
+    if (inputBukti) inputBukti.required = delivery;
+    if (infoStruk) {
+      infoStruk.textContent = delivery
+        ? 'Pembayaran QRIS DANA khusus delivery. Unggah bukti transfer untuk dikirim otomatis ke WhatsApp.'
+        : 'Mohon simpan struk untuk bukti pemesanan dan pengambilan.';
+    }
+
+    var qrisImg = $('#qrisGambar');
+    var qrisUnduh = $('#btnUnduhQris');
+    var srcQris = (TOKO.pembayaran && TOKO.pembayaran.qrisGambar) || 'img/qris.jpg';
+    if (qrisImg && qrisImg.getAttribute('src') !== srcQris) {
+      qrisImg.hidden = false;
+      var qk = $('#qrisKosong'); if (qk) qk.hidden = true;
+      qrisImg.src = srcQris;
+    }
+    if (qrisUnduh) qrisUnduh.href = srcQris;
+
+    renderRingkasan();
+  }
+
+  function resetBukti() {
+    buktiFileAktif = null;
+    buktiDataUrlAktif = '';
+    var inp = $('#inputBukti'); if (inp) inp.value = '';
+    var prev = $('#buktiPreview'); if (prev) prev.hidden = true;
+    var img = $('#buktiPreviewImg'); if (img) img.removeAttribute('src');
+  }
 
   function renderKategori() {
     var kats = ['Semua'];
@@ -191,7 +336,7 @@
         (p.varian || []).map(function (v) {
           return '<div class="varian"><b>' + esc(v.nama) + '</b><div class="opsi">' + v.opsi.map(function (o) { return '<button data-v="' + esc(v.nama) + '" data-o="' + esc(o) + '" class="' + (pilihan[v.nama] === o ? 'aktif' : '') + '">' + esc(o) + (v.tambah && v.tambah[o] ? ' <small>+' + (v.tambah[o] / 1000) + 'rb</small>' : '') + '</button>'; }).join('') + '</div></div>';
         }).join('') +
-        '<span class="stok-info' + (habis ? ' habis' : p.stok <= 10 ? ' tipis' : '') + '"><i></i>' + (habis ? 'Stok sedang habis, tanya admin untuk pre-order.' : p.stok <= 10 ? 'Sisa ' + p.stok + ', jangan sampai kehabisan.' : 'Stok tersedia, siap diambil') + '</span>' +
+        '<span class="stok-info' + (habis ? ' habis' : p.stok <= 10 ? ' tipis' : '') + '"><i></i>' + (habis ? 'Stok sedang habis, tanya admin untuk pre-order.' : p.stok <= 10 ? 'Sisa ' + p.stok + ', jangan sampai kehabisan.' : 'Stok tersedia, siap dipesan') + '</span>' +
         '<div class="beli"><div class="jumlah"><button data-q="-1" aria-label="Kurangi">−</button><span>' + qty + '</span><button data-q="1" aria-label="Tambah">+</button></div>' +
         '<button class="tombol" id="btnTambah"' + (habis ? ' disabled' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1.5 12h-11zM9 8a3 3 0 0 1 6 0"/></svg>' + (habis ? 'Stok habis' : 'Tambah · ' + rp(hargaVarian(p, pilihan) * qty)) + '</button></div></div></div>';
     }
@@ -221,14 +366,33 @@
     btn.hidden = !riwayat.length;
   }
 
-  function bukaStruk(pesanan, infoSimpan) {
+  function bukaStruk(pesanan, infoSimpan, fileBukti) {
     if (!root.StrukKit) return;
     var modal = $('#strukModal'), isi = $('#strukModalIsi');
     if (!modal || !isi) return;
     var waUrl = linkWA(TOKO.wa, pesanan.pesan_wa || buatPesan(pesanan.items, pesanan, TOKO, pesanan.kode));
+    var isDelivery = pesanan.metode_bayar === 'QRIS DANA' || String(pesanan.pengiriman || '').toLowerCase().indexOf('delivery') > -1;
     var statusSimpan = infoSimpan && infoSimpan.mode === 'supabase'
       ? '<span class="struk-status ok">Tercatat otomatis di sistem admin</span>'
       : '<span class="struk-status">Struk siap disimpan &amp; dikirim ke WhatsApp</span>';
+
+    var blokBuktiModal = isDelivery && pesanan.bukti_bayar
+      ? '<div class="struk-bukti-box"><small>Bukti Transfer QRIS DANA terlampir</small><img src="' + esc(pesanan.bukti_bayar) + '" alt="Bukti transfer"></div>'
+      : '';
+
+    var tombolAksi = isDelivery
+      ? '<button type="button" class="tombol-wa" id="aksiKirimBuktiWA"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Kirim Pesan &amp; Bukti Transfer ke WA</button>' +
+        '<div class="struk-aksi-baris">' +
+          '<a class="tombol-sekunder" id="aksiKirimWA" href="' + esc(waUrl) + '" target="_blank" rel="noopener">Chat WA (Teks)</a>' +
+          '<button type="button" class="tombol-sekunder" id="aksiCetakPDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>Cetak / PDF</button>' +
+          '<button type="button" class="tombol-sekunder" id="aksiUnduhPNG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Struk (PNG)</button>' +
+        '</div>'
+      : '<a class="tombol-wa" id="aksiKirimWA" href="' + esc(waUrl) + '" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Kirim Pesan ke WhatsApp</a>' +
+        '<div class="struk-aksi-baris">' +
+          '<button type="button" class="tombol-sekunder" id="aksiBagikanWA"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Bagikan Gambar ke WA</button>' +
+          '<button type="button" class="tombol-sekunder" id="aksiCetakPDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>Cetak / Download PDF</button>' +
+          '<button type="button" class="tombol-sekunder" id="aksiUnduhPNG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download Gambar (PNG)</button>' +
+        '</div>';
 
     isi.innerHTML =
       '<div class="struk-modal-bungkus">' +
@@ -236,15 +400,8 @@
           '<div><h2>Struk Pemesanan</h2>' + statusSimpan + '</div>' +
           '<button class="ikon-btn" id="tutupStruk" aria-label="Tutup struk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
         '</header>' +
-        '<div class="struk-modal-badan">' + root.StrukKit.renderStrukHTML(pesanan, TOKO) + '</div>' +
-        '<div class="struk-aksi">' +
-          '<a class="tombol-wa" id="aksiKirimWA" href="' + esc(waUrl) + '" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Kirim Pesan ke WhatsApp</a>' +
-          '<div class="struk-aksi-baris">' +
-            '<button type="button" class="tombol-sekunder" id="aksiBagikanWA"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Bagikan Gambar ke WA</button>' +
-            '<button type="button" class="tombol-sekunder" id="aksiCetakPDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>Cetak / Download PDF</button>' +
-            '<button type="button" class="tombol-sekunder" id="aksiUnduhPNG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download Gambar (PNG)</button>' +
-          '</div>' +
-        '</div>' +
+        '<div class="struk-modal-badan">' + root.StrukKit.renderStrukHTML(pesanan, TOKO) + blokBuktiModal + '</div>' +
+        '<div class="struk-aksi">' + tombolAksi + '</div>' +
       '</div>';
 
     if (!modal.open) modal.showModal();
@@ -266,6 +423,14 @@
         }).catch(function () {
           toast('Gagal membagikan gambar, gunakan tombol Download PNG');
         });
+      } else if (btn.id === 'aksiKirimBuktiWA') {
+        root.StrukKit.bagikanBuktiKeWA(pesanan, fileBukti, waUrl).then(function (res) {
+          if (res && res.metode === 'fallback') {
+            toast('Chat WA dibuka & bukti transfer diunduh — silakan lampirkan di chat');
+          }
+        }).catch(function () {
+          window.open(waUrl, '_blank', 'noopener');
+        });
       }
     };
   }
@@ -284,6 +449,31 @@
   }
   function simpan() { simpanan.set('katalog-keranjang', keranjang); renderKeranjang(); }
 
+  function renderRingkasan() {
+    var t = hitungTotal(keranjang, pengirimanAktifId(), TOKO);
+    var urlMaps = linkMaps(TOKO.lokasi);
+    var html = '';
+    if (t.delivery) {
+      html += '<div><span>Subtotal (' + t.totalQty + ' item)</span><span>' + rp(t.subtotal) + '</span></div>';
+      html += '<div><span>Ongkir</span><span>' + (t.gratisOngkir ? '<s>' + rp(t.ongkirAsli) + '</s> <b class="gratis-tag">GRATIS</b>' : rp(t.ongkir)) + '</span></div>';
+    }
+    html += '<div class="total"><span>Total</span><span>' + rp(t.total) + '</span></div>';
+    if (t.delivery) {
+      if (t.gratisOngkir) {
+        html += '<div class="catatan">Gratis ongkir aktif! (Min. ' + t.minGratis + ' item terpenuhi)</div>';
+      } else {
+        var kurang = Math.max(0, t.minGratis - t.totalQty);
+        html += '<div class="catatan">Tambah ' + kurang + ' item lagi (bebas/mix) untuk Gratis Ongkir</div>';
+      }
+    } else {
+      html += '<div class="catatan">Takeaway · Ambil di stan' + (urlMaps ? ' · <a href="' + esc(urlMaps) + '" target="_blank" rel="noopener">Lihat Maps</a>' : '') + '</div>';
+    }
+    $('#ringkas').innerHTML = html;
+    var qn = $('#qrisNominal');
+    if (qn) qn.textContent = rp(t.total);
+    $('#btnWa').disabled = !keranjang.length;
+  }
+
   function renderKeranjang() {
     var n = keranjang.reduce(function (s, i) { return s + i.qty; }, 0);
     $('#hitungKeranjang').hidden = !n; $('#hitungKeranjang').textContent = n;
@@ -293,12 +483,7 @@
       return '<div class="item" style="--i:' + k + '"><span class="item-gambar"><img src="' + srcGambar(g) + '" alt=""></span><div><b>' + esc(i.nama) + '</b><small>' + esc(i.label || '') + (i.label ? ' · ' : '') + rp(i.harga) + '</small><br><button class="hapus" data-hapus="' + k + '">Hapus</button></div>' +
         '<div class="jumlah"><button data-k="' + k + '" data-d="-1" aria-label="Kurangi">−</button><span>' + i.qty + '</span><button data-k="' + k + '" data-d="1" aria-label="Tambah">+</button></div></div>';
     }).join('') : '<div class="laci-kosong"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1.5 12h-11zM9 8a3 3 0 0 1 6 0"/></svg><b>Keranjang masih kosong</b><span>Yuk pilih barang dulu.</span></div>';
-    var t = hitungTotal(keranjang);
-    var urlMaps = linkMaps(TOKO.lokasi);
-    $('#ringkas').innerHTML =
-      '<div class="total"><span>Total</span><span>' + rp(t.total) + '</span></div>' +
-      '<div class="catatan">Takeaway · Ambil di stan' + (urlMaps ? ' · <a href="' + esc(urlMaps) + '" target="_blank" rel="noopener">Lihat Maps</a>' : '') + '</div>';
-    $('#btnWa').disabled = !keranjang.length;
+    renderRingkasan();
     perbaruiTombolStrukTerakhir();
   }
 
@@ -311,8 +496,16 @@
     document.title = TOKO.nama + ' — Katalog';
     $('#namaToko').textContent = TOKO.nama; $('#namaTokoKaki').textContent = TOKO.nama; $('#slogan').textContent = TOKO.slogan; pasangLogo();
     $('#tahun').textContent = new Date().getFullYear();
+    renderOpsiPengiriman();
     var pb = simpanan.get('katalog-pembeli', {}); var f = $('#formPesan');
     ['nama', 'catatan'].forEach(function (k) { if (pb[k] != null && f.elements[k]) f.elements[k].value = pb[k]; });
+    alamatDeliverySimpan = pb.alamatDelivery || '';
+    if (pb.pengirimanId && $('#pilihPengiriman')) {
+      var adaOpsi = daftarPengiriman(TOKO).some(function (o) { return o.id === pb.pengirimanId; });
+      if (adaOpsi) $('#pilihPengiriman').value = pb.pengirimanId;
+    }
+    perbaruiModePengiriman();
+
     var unggul = PRODUK.filter(function (p) { return p.label && p.stok !== 0; })[0] || PRODUK[0];
     if (unggul) {
       $('#sorotan').innerHTML = '<button class="sorotan-kartu" data-id="' + esc(unggul.id) + '"><span class="sorotan-gambar"><img src="' + srcGambar(unggul.gambar[0]) + '" alt="' + esc(unggul.nama) + '"></span>' +
@@ -322,7 +515,7 @@
     }
     $('#jumlahProduk').textContent = PRODUK.length;
     renderKategori(); renderGrid(); renderLokasi(); renderKeranjang();
-    if (/[?&]keranjang\b/.test(location.search)) { if (!keranjang.length) { tambah(PRODUK[0], { Ukuran: 'M', Warna: 'Hitam' }, 2); tambah(PRODUK[2], { Warna: 'Terakota' }, 1); } bukaLaci(true); }
+    if (/[?&]keranjang\b/.test(location.search)) { if (!keranjang.length && PRODUK[0]) { tambah(PRODUK[0], {}, 2); } bukaLaci(true); }
   }
 
   $('#kategori').onclick = function (e) { var b = e.target.closest('.kat'); if (b) { katAktif = b.dataset.k; renderKategori(); renderGrid(); } };
@@ -337,6 +530,40 @@
     else if (b.dataset.k) { var i = keranjang[+b.dataset.k]; i.qty += +b.dataset.d; if (i.qty < 1) keranjang.splice(+b.dataset.k, 1); }
     simpan();
   };
+
+  if ($('#pilihPengiriman')) {
+    $('#pilihPengiriman').onchange = function () {
+      perbaruiModePengiriman();
+    };
+  }
+  if ($('#inputAlamat')) {
+    $('#inputAlamat').oninput = function () {
+      if (!this.readOnly) alamatDeliverySimpan = this.value;
+    };
+  }
+  if ($('#inputBukti')) {
+    $('#inputBukti').onchange = function () {
+      var file = this.files && this.files[0];
+      if (!file) { resetBukti(); return; }
+      buktiFileAktif = file;
+      var kompres = root.StrukKit && root.StrukKit.kompresGambar
+        ? root.StrukKit.kompresGambar(file, 720, 0.72)
+        : Promise.resolve('');
+      kompres.then(function (dataUrl) {
+        buktiDataUrlAktif = dataUrl || '';
+        if (dataUrl && $('#buktiPreviewImg') && $('#buktiPreview')) {
+          $('#buktiPreviewImg').src = dataUrl;
+          $('#buktiPreview').hidden = false;
+        }
+      }).catch(function () {
+        toast('Gagal memproses gambar bukti transfer');
+      });
+    };
+  }
+  if ($('#btnHapusBukti')) {
+    $('#btnHapusBukti').onclick = resetBukti;
+  }
+
   var btnStrukTerakhir = $('#btnStrukTerakhir');
   if (btnStrukTerakhir) {
     btnStrukTerakhir.onclick = function () {
@@ -349,19 +576,58 @@
   $('#formPesan').onsubmit = function (e) {
     e.preventDefault(); var f = e.target;
     if (!keranjang.length) return;
-    var pb = { nama: f.elements.nama.value.trim(), catatan: f.elements.catatan.value.trim() };
-    simpanan.set('katalog-pembeli', pb);
+    var pgId = pengirimanAktifId();
+    var t = hitungTotal(keranjang, pgId, TOKO);
+    var alamatInput = (f.elements.alamat && f.elements.alamat.value.trim()) || '';
+
+    if (t.delivery && !alamatInput) {
+      $('#dataPembeli').open = true;
+      toast('Mohon isi alamat lengkap pengiriman terlebih dahulu');
+      if (f.elements.alamat) f.elements.alamat.focus();
+      return;
+    }
+    if (t.delivery && !buktiFileAktif && !buktiDataUrlAktif) {
+      $('#dataPembeli').open = true;
+      toast('Mohon unggah bukti transfer QRIS DANA terlebih dahulu');
+      if ($('#inputBukti')) $('#inputBukti').focus();
+      return;
+    }
+
+    if (t.delivery) alamatDeliverySimpan = alamatInput;
+    var pb = {
+      nama: f.elements.nama.value.trim(),
+      catatan: f.elements.catatan.value.trim(),
+      pengirimanId: pgId,
+      alamat: t.delivery ? alamatInput : ((TOKO.lokasi && TOKO.lokasi.alamat) || ''),
+      alamatDelivery: alamatDeliverySimpan
+    };
+    simpanan.set('katalog-pembeli', {
+      nama: pb.nama,
+      catatan: pb.catatan,
+      pengirimanId: pb.pengirimanId,
+      alamatDelivery: pb.alamatDelivery
+    });
+
     var itemsSalin = keranjang.map(function (i) {
       return { id: i.id, nama: i.nama, label: i.label || '', harga: i.harga, qty: i.qty };
     });
-    var t = hitungTotal(itemsSalin);
     var kode = root.StrukKit ? root.StrukKit.buatKodePesanan(TOKO.nama) : 'ORD-' + Date.now();
     var pesanWA = buatPesan(itemsSalin, pb, TOKO, kode);
+    var fileBuktiKirim = t.delivery ? buktiFileAktif : null;
+    var dataUrlBuktiKirim = t.delivery ? buktiDataUrlAktif : '';
+
     var pesanan = {
       kode: kode,
       created_at: new Date().toISOString(),
       nama: pb.nama,
       catatan: pb.catatan,
+      pengiriman: t.pengirimanLabel,
+      alamat: pb.alamat,
+      subtotal: t.subtotal,
+      ongkir: t.ongkir,
+      metode_bayar: t.delivery ? 'QRIS DANA' : 'Bayar di Stan',
+      status_bayar: t.delivery ? 'Menunggu Verifikasi' : 'Belum Bayar',
+      bukti_bayar: dataUrlBuktiKirim,
       items: itemsSalin,
       total: t.total,
       status: 'Baru',
@@ -377,9 +643,10 @@
     proses.then(function (hasil) {
       btn.innerHTML = labelAsli;
       keranjang = [];
+      resetBukti();
       simpan();
       bukaLaci(false);
-      bukaStruk(pesanan, hasil);
+      bukaStruk(pesanan, hasil, fileBuktiKirim);
       if (hasil && hasil.error) toast('Struk dibuat (simpan lokal — cek pengaturan Supabase)');
     });
   };
@@ -393,6 +660,7 @@
     fetch(TOKO.sheetCSV).then(function (r) { return r.text(); }).then(function (t) { var p = produkDariCSV(t); if (p.length) PRODUK = p; mulai(); })
       .catch(function () { toast('Gagal memuat Google Sheet, pakai data lokal'); mulai(); });
   } else mulai();
+
   // ---------- Tema (customizer Maliki Studio, lihat tema.css & tema.js) ----------
   var FONT_OK = ['Plus Jakarta Sans', 'Inter', 'Poppins', 'DM Sans', 'Space Grotesk', 'Nunito'];
   function terapkanTema(t) {
@@ -416,7 +684,6 @@
     }
   }
   window.addEventListener('message', function (e) { if (e.data && e.data.tipe === 'tema') terapkanTema(e.data); });
-  // ---------- Bagian (customizer: warna per bagian, sorot, tap-untuk-pilih) ----------
   var PETA_BAGIAN = {
     nav: '.kepala',
     latar: 'main, .kaki',
@@ -434,7 +701,6 @@
     });
     if (baru && sorotAktif) sorot(sorotAktif);
   }
-  // warna teks otomatis (terang/gelap) dari luminansi warna latar sebenarnya
   function warnaNyata(v) {
     var p = document.createElement('i'); p.style.cssText = 'position:absolute;width:0;height:0;background:var(' + v + ')';
     document.body.appendChild(p); var c = getComputedStyle(p).backgroundColor; p.remove();

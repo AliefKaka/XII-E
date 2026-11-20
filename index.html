@@ -16,7 +16,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Katalog Toko</title>
-<meta name="description" content="Katalog produk takeaway, pesan langsung lewat WhatsApp dan ambil di stan.">
+<meta name="description" content="Katalog produk takeaway &amp; delivery, pesan langsung lewat WhatsApp.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='16' fill='%231b1d1a'/%3E%3Cpath d='M9 12h14l-1.5 11h-11z' fill='%23f6f1e7'/%3E%3Cpath d='M12 12a4 4 0 0 1 8 0' stroke='%23f6f1e7' stroke-width='2' fill='none'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,10 +39,10 @@
 <main class="wadah">
   <section class="pembuka">
     <div class="pembuka-teks">
-      <span class="pembuka-label"><i class="pembuka-titik"></i><span><span id="jumlahProduk">0</span> produk siap ambil</span></span>
+      <span class="pembuka-label"><i class="pembuka-titik"></i><span><span id="jumlahProduk">0</span> produk siap pesan</span></span>
       <h1>Belanja santai,<br><em>pesan lewat WhatsApp.</em></h1>
-      <p>Pilih barang, masukkan keranjang, lalu kirim pesanan ke WA dan ambil langsung di stan. Tanpa daftar akun.</p>
-      <ol class="langkah" aria-label="Cara pesan"><li><b>1</b>Pilih barang</li><li><b>2</b>Pesan ke WA</li><li><b>3</b>Ambil di stan</li></ol>
+      <p>Pilih barang, masukkan keranjang, lalu pilih ambil di stan (Takeaway) atau Delivery (gratis ongkir min. 5 item).</p>
+      <ol class="langkah" aria-label="Cara pesan"><li><b>1</b>Pilih barang</li><li><b>2</b>Takeaway / Delivery</li><li><b>3</b>Pesan ke WA</li></ol>
     </div>
     <div class="sorotan" id="sorotan"></div>
   </section>
@@ -64,7 +64,7 @@
 </main>
 
 <footer class="kaki wadah">
-  <p>© <span id="tahun"></span> <span id="namaTokoKaki" data-tema-nama>D SECO</span> · Pesanan takeaway diproses lewat WhatsApp.</p>
+  <p>© <span id="tahun"></span> <span id="namaTokoKaki" data-tema-nama>D SECO</span> · Pesanan takeaway &amp; delivery diproses lewat WhatsApp.</p>
 </footer>
 
 <!-- Detail produk -->
@@ -84,11 +84,39 @@
   <form class="laci-kaki" id="formPesan">
     <div class="ringkas" id="ringkas"></div>
     <details id="dataPembeli" open>
-      <summary>Data pemesan</summary>
-      <label>Nama<input name="nama" required autocomplete="name"></label>
-      <label>Catatan (opsional)<input name="catatan" placeholder="Mis. jam ambil, keterangan tambahan"></label>
+      <summary>Data pemesan &amp; pengiriman</summary>
+      <label>Nama<input name="nama" required autocomplete="name" placeholder="Nama lengkap"></label>
+      <label>Pilihan Pengiriman
+        <select name="pengiriman" id="pilihPengiriman" aria-label="Pilihan Pengiriman"></select>
+      </label>
+      <label id="labelAlamat">
+        <span id="judulAlamat">Alamat Pengambilan (Terkunci)</span>
+        <textarea name="alamat" id="inputAlamat" rows="2" placeholder="Tulis alamat lengkap, patokan, RT/RW"></textarea>
+      </label>
+      <label>Catatan (opsional)<input name="catatan" placeholder="Mis. jam ambil/antar, keterangan tambahan"></label>
+
+      <!-- Pembayaran QRIS DANA (hanya tampil & wajib saat Delivery) -->
+      <div class="blok-qris" id="blokQris" hidden>
+        <div class="qris-kepala">
+          <span class="qris-lencana">Pembayaran QRIS DANA</span>
+          <strong id="qrisNominal">Rp0</strong>
+        </div>
+        <p class="qris-info">Scan QRIS DANA di bawah sesuai total bayar, lalu unggah bukti transfer agar dikirim otomatis bersama pesan WhatsApp.</p>
+        <div class="qris-gambar-bungkus">
+          <img id="qrisGambar" src="img/qris.jpg" alt="QRIS DANA D SECO" loading="lazy">
+          <p class="qris-kosong" id="qrisKosong" hidden>File <code>img/qris.jpg</code> belum ditemukan. Letakkan gambar QRIS DANA di <code>img/qris.jpg</code>.</p>
+        </div>
+        <a class="tombol-sekunder qris-unduh" id="btnUnduhQris" href="img/qris.jpg" download="qris-dana.jpg">Download Gambar QRIS</a>
+        <label class="label-bukti">Bukti Transfer (Wajib untuk Delivery)
+          <input type="file" name="bukti" id="inputBukti" accept="image/*">
+        </label>
+        <div class="bukti-preview" id="buktiPreview" hidden>
+          <img id="buktiPreviewImg" alt="Pratinjau bukti transfer">
+          <button type="button" class="hapus-bukti" id="btnHapusBukti">Ganti / hapus bukti</button>
+        </div>
+      </div>
     </details>
-    <p class="info-struk">Mohon simpan struk untuk bukti pemesanan dan pengambilan.</p>
+    <p class="info-struk" id="infoStruk">Mohon simpan struk untuk bukti pemesanan dan pengambilan.</p>
     <button class="tombol-wa" id="btnWa" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Pesan &amp; Buat Struk</button>
     <button class="tombol-sekunder" id="btnStrukTerakhir" type="button" hidden>Lihat struk terakhir</button>
   </form>

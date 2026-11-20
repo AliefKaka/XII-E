@@ -9,11 +9,25 @@ create table if not exists public.pesanan (
   created_at timestamptz not null default now(),
   nama text not null,
   catatan text default '',
+  pengiriman text not null default 'Takeaway (Ambil di Stan)',
+  alamat text default '',
+  ongkir bigint not null default 0,
+  metode_bayar text not null default 'Bayar di Stan',
+  status_bayar text not null default 'Belum Bayar',
+  bukti_bayar text default '',
   items jsonb not null default '[]'::jsonb,
   total bigint not null default 0,
   status text not null default 'Baru',
   pesan_wa text default ''
 );
+
+-- Tambah kolom baru secara aman jika tabel pesanan sudah dibuat sebelumnya
+alter table public.pesanan add column if not exists pengiriman text not null default 'Takeaway (Ambil di Stan)';
+alter table public.pesanan add column if not exists alamat text default '';
+alter table public.pesanan add column if not exists ongkir bigint not null default 0;
+alter table public.pesanan add column if not exists metode_bayar text not null default 'Bayar di Stan';
+alter table public.pesanan add column if not exists status_bayar text not null default 'Belum Bayar';
+alter table public.pesanan add column if not exists bukti_bayar text default '';
 
 -- Aktifkan Row Level Security (RLS)
 alter table public.pesanan enable row level security;
@@ -36,7 +50,7 @@ create policy "izinkan_baca_pesanan"
   to anon, authenticated
   using (true);
 
--- Izinkan halaman admin mengubah status pesanan
+-- Izinkan halaman admin mengubah status pesanan & status pembayaran
 create policy "izinkan_ubah_status"
   on public.pesanan for update
   to anon, authenticated
