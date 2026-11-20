@@ -14,8 +14,8 @@ window.TOKO = {
     nama: 'Stan Utama',
     alamat: 'Isi alamat singkat atau patokan lokasi stan di sini',
     jamBuka: 'Setiap hari, 09.00 – 21.00 WIB',
-    lat: -8,1374446,
-    lng: 113,2230032
+    lat: -8.1335,
+    lng: 113.2248
   },
   // OPSIONAL: ambil produk dari Google Sheet (File → Bagikan → Publikasikan ke web → CSV).
   // Kolom: id,nama,kategori,harga,hargaCoret,deskripsi,varian,gambar,stok,label
