@@ -58,6 +58,12 @@ module.exports = async function handler(req, res) {
         kode: body.kode,
         nama: body.nama,
         catatan: body.catatan || '',
+        pengiriman: body.pengiriman || 'Takeaway (Ambil di Stan)',
+        alamat: body.alamat || '',
+        ongkir: Math.round(Number(body.ongkir) || 0),
+        metode_bayar: body.metode_bayar || 'Bayar di Stan',
+        status_bayar: body.status_bayar || 'Belum Bayar',
+        bukti_bayar: body.bukti_bayar || '',
         items: Array.isArray(body.items) ? body.items : [],
         total: Math.round(Number(body.total) || 0),
         status: body.status || 'Baru',
@@ -80,13 +86,18 @@ module.exports = async function handler(req, res) {
       if (!idPatch && !kodePatch) {
         return res.status(400).json({ error: 'Parameter id atau kode wajib diisi.' });
       }
+      var updateData = {};
+      if (patchBody.status != null) updateData.status = patchBody.status;
+      if (patchBody.status_bayar != null) updateData.status_bayar = patchBody.status_bayar;
+      if (!Object.keys(updateData).length) updateData.status = 'Baru';
+
       var filterPatch = idPatch
         ? '?id=eq.' + encodeURIComponent(idPatch)
         : '?kode=eq.' + encodeURIComponent(kodePatch);
       var rPatch = await fetch(baseEndpoint + filterPatch, {
         method: 'PATCH',
         headers: buatHeader(key, { Prefer: 'return=representation' }),
-        body: JSON.stringify({ status: patchBody.status || 'Baru' })
+        body: JSON.stringify(updateData)
       });
       var tPatch = await rPatch.text();
       res.status(rPatch.status).setHeader('Content-Type', 'application/json');
