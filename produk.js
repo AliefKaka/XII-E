@@ -20,8 +20,8 @@ window.TOKO = {
   // SUPABASE — isi Project URL dan Publishable/anon key dari dashboard Supabase
   // agar seluruh pesanan otomatis tersimpan ke database dan tampil di halaman Admin.
   supabase: {
-    url: '',      // Contoh: 'https://abcdefghijklmno.supabase.co'
-    anonKey: '',  // Contoh: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' atau 'sb_publishable_...'
+    url: 'https://flwtdotnqdjutnfxmyzw.supabase.co/rest/v1/',      // Contoh: 'https://abcdefghijklmno.supabase.co'
+    anonKey: 'sb_publishable_eJwINfa4vXtkghrV-_i0XQ_JLPIBP8X',  // Contoh: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' atau 'sb_publishable_...'
     tabel: 'pesanan'
   },
   // AKUN ADMIN — digunakan untuk masuk ke halaman admin.html
