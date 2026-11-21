@@ -5,6 +5,7 @@
   var KUNCI_RIWAYAT = 'katalog-riwayat-pesanan';
   var KETERANGAN_STRUK = 'Mohon simpan struk untuk bukti pemesanan dan pengambilan.';
   var KETERANGAN_STRUK_DELIVERY = 'Mohon simpan struk sebagai bukti pemesanan dan pembayaran.';
+  var KETERANGAN_STRUK_COD = 'Mohon simpan struk sebagai bukti pemesanan. Pembayaran dilakukan di tempat (COD).';
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -118,7 +119,14 @@
 
   function adalahDelivery(pesanan) {
     var pg = String((pesanan && pesanan.pengiriman) || '').toLowerCase();
-    return pg.indexOf('delivery') > -1 || (pesanan && pesanan.metode_bayar === 'QRIS DANA');
+    var mb = String((pesanan && pesanan.metode_bayar) || '').toLowerCase();
+    return pg.indexOf('delivery') > -1 || mb === 'qris dana' || mb.indexOf('cod') > -1;
+  }
+
+  function keteranganStruk(pesanan) {
+    if (!adalahDelivery(pesanan)) return KETERANGAN_STRUK;
+    var mb = String((pesanan && pesanan.metode_bayar) || '').toLowerCase();
+    return mb.indexOf('cod') > -1 ? KETERANGAN_STRUK_COD : KETERANGAN_STRUK_DELIVERY;
   }
 
   function normalisasiPesanan(raw) {
@@ -385,7 +393,7 @@
         '<span>TOTAL BAYAR</span><strong>' + esc(rupiah(p.total, mu)) + '</strong>' +
       '</div>' +
       '<div class="struk-peringatan">' +
-        '<b>Penting:</b> ' + esc(delivery ? KETERANGAN_STRUK_DELIVERY : KETERANGAN_STRUK) +
+        '<b>Penting:</b> ' + esc(keteranganStruk(p)) +
       '</div>' +
     '</div>';
   }
@@ -421,7 +429,7 @@
       var barisAlamat = alamatStan ? bungkusTeks(ukur, alamatStan, CW) : [];
       var barisAlamatKirim = (delivery && p.alamat) ? bungkusTeks(ukur, 'Alamat Kirim: ' + p.alamat, CW) : [];
       var barisCatatan = p.catatan ? bungkusTeks(ukur, 'Catatan: ' + p.catatan, CW) : [];
-      var teksPeringatan = 'Penting: ' + (delivery ? KETERANGAN_STRUK_DELIVERY : KETERANGAN_STRUK);
+      var teksPeringatan = 'Penting: ' + keteranganStruk(p);
       var barisPeringatan = bungkusTeks(ukur, teksPeringatan, CW - 36);
 
       var tinggiItem = 0;
