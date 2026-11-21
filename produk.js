@@ -20,7 +20,7 @@ window.TOKO = {
   // PENGATURAN PENGIRIMAN (Takeaway & Delivery)
   // Pembelian total >= minGratisOngkir item (bebas 1 produk atau mix) otomatis gratis ongkir.
   pengiriman: {
-    minGratisOngkir: 4,
+    minGratisOngkir: 5,
     opsi: [
       { id: 'takeaway', label: 'Takeaway (Ambil di Stan)', ongkir: 0, delivery: false },
       { id: 'lumajang-kota', label: 'Delivery — Lumajang Kota', ongkir: 3000, delivery: true },
