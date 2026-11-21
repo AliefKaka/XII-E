@@ -84,17 +84,20 @@
     }
     baris.push('');
     baris.push('Nama: ' + (pb.nama || '-'));
+    var isCod = t.delivery && String(pb.metodeBayar || '').toLowerCase() === 'cod';
     if (t.delivery) {
       baris.push('Pengiriman: ' + t.pengirimanLabel);
       baris.push('Alamat Lengkap: ' + (pb.alamat || '-'));
-      baris.push('Pembayaran: QRIS DANA (Bukti transfer terlampir)');
+      baris.push('Pembayaran: ' + (isCod ? 'COD (Bayar di Tempat)' : 'QRIS DANA (Bukti transfer terlampir)'));
     } else {
       baris.push('Pengambilan: Takeaway (Ambil di lokasi)');
     }
     if (pb.catatan) baris.push('Catatan: ' + pb.catatan);
     baris.push('');
-    if (t.delivery) {
+    if (t.delivery && !isCod) {
       baris.push('_Bukti transfer QRIS DANA saya kirimkan bersama pesan ini._');
+    } else if (isCod) {
+      baris.push('_Struk pemesanan sudah saya simpan. Pembayaran dilakukan di tempat (COD)._');
     } else {
       baris.push('_Struk pemesanan sudah saya simpan untuk bukti pengambilan._');
     }
@@ -203,6 +206,11 @@
     return (sel && sel.value) || 'takeaway';
   }
 
+  function metodeBayarAktif() {
+    var sel = $('#pilihMetodeBayar');
+    return (sel && sel.value === 'cod') ? 'cod' : 'qris';
+  }
+
   function renderOpsiPengiriman() {
     var sel = $('#pilihPengiriman');
     if (!sel) return;
@@ -217,19 +225,26 @@
     var id = pengirimanAktifId();
     var opsi = cariPengiriman(id, TOKO);
     var delivery = !!opsi.delivery;
+    var metode = metodeBayarAktif();
+    var isQris = delivery && metode === 'qris';
+    var isCod = delivery && metode === 'cod';
     var inputAlamat = $('#inputAlamat');
     var judulAlamat = $('#judulAlamat');
+    var labelMetode = $('#labelMetodeBayar');
     var blokQris = $('#blokQris');
+    var blokCod = $('#blokCod');
     var inputBukti = $('#inputBukti');
     var infoStruk = $('#infoStruk');
     var alamatStan = (TOKO.lokasi && TOKO.lokasi.alamat) || '';
 
     if (inputAlamat) {
       if (delivery) {
+        if (inputAlamat.readOnly) {
+          inputAlamat.value = alamatDeliverySimpan || '';
+        }
         inputAlamat.readOnly = false;
         inputAlamat.required = true;
         inputAlamat.classList.remove('alamat-terkunci');
-        inputAlamat.value = alamatDeliverySimpan || '';
         if (judulAlamat) judulAlamat.textContent = 'Alamat Lengkap Pengiriman (Wajib)';
       } else {
         // Simpan dulu jika sebelumnya sedang mengisi alamat delivery
@@ -244,12 +259,16 @@
       }
     }
 
-    if (blokQris) blokQris.hidden = !delivery;
-    if (inputBukti) inputBukti.required = delivery;
+    if (labelMetode) labelMetode.hidden = !delivery;
+    if (blokQris) blokQris.hidden = !isQris;
+    if (blokCod) blokCod.hidden = !isCod;
+    if (inputBukti) inputBukti.required = isQris;
     if (infoStruk) {
-      infoStruk.textContent = delivery
-        ? 'Pembayaran QRIS DANA khusus delivery. Unggah bukti transfer untuk dikirim otomatis ke WhatsApp.'
-        : 'Mohon simpan struk untuk bukti pemesanan dan pengambilan.';
+      infoStruk.textContent = isQris
+        ? 'Pembayaran QRIS DANA. Unggah bukti transfer untuk dikirim otomatis ke WhatsApp.'
+        : isCod
+          ? 'Pembayaran COD (Bayar di Tempat). Mohon simpan struk untuk bukti pemesanan saat kurir tiba.'
+          : 'Mohon simpan struk untuk bukti pemesanan dan pengambilan.';
     }
 
     var qrisImg = $('#qrisGambar');
@@ -371,16 +390,16 @@
     var modal = $('#strukModal'), isi = $('#strukModalIsi');
     if (!modal || !isi) return;
     var waUrl = linkWA(TOKO.wa, pesanan.pesan_wa || buatPesan(pesanan.items, pesanan, TOKO, pesanan.kode));
-    var isDelivery = pesanan.metode_bayar === 'QRIS DANA' || String(pesanan.pengiriman || '').toLowerCase().indexOf('delivery') > -1;
+    var isQris = pesanan.metode_bayar === 'QRIS DANA' || !!pesanan.bukti_bayar;
     var statusSimpan = infoSimpan && infoSimpan.mode === 'supabase'
       ? '<span class="struk-status ok">Tercatat otomatis di sistem admin</span>'
       : '<span class="struk-status">Struk siap disimpan &amp; dikirim ke WhatsApp</span>';
 
-    var blokBuktiModal = isDelivery && pesanan.bukti_bayar
+    var blokBuktiModal = isQris && pesanan.bukti_bayar
       ? '<div class="struk-bukti-box"><small>Bukti Transfer QRIS DANA terlampir</small><img src="' + esc(pesanan.bukti_bayar) + '" alt="Bukti transfer"></div>'
       : '';
 
-    var tombolAksi = isDelivery
+    var tombolAksi = isQris
       ? '<button type="button" class="tombol-wa" id="aksiKirimBuktiWA"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9.5 9.5c0 2.5 2.5 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/></svg>Kirim Pesan &amp; Bukti Transfer ke WA</button>' +
         '<div class="struk-aksi-baris">' +
           '<a class="tombol-sekunder" id="aksiKirimWA" href="' + esc(waUrl) + '" target="_blank" rel="noopener">Chat WA (Teks)</a>' +
@@ -471,6 +490,8 @@
     $('#ringkas').innerHTML = html;
     var qn = $('#qrisNominal');
     if (qn) qn.textContent = rp(t.total);
+    var cn = $('#codNominal');
+    if (cn) cn.textContent = rp(t.total);
     $('#btnWa').disabled = !keranjang.length;
   }
 
@@ -504,6 +525,9 @@
       var adaOpsi = daftarPengiriman(TOKO).some(function (o) { return o.id === pb.pengirimanId; });
       if (adaOpsi) $('#pilihPengiriman').value = pb.pengirimanId;
     }
+    if ((pb.metodeBayar === 'qris' || pb.metodeBayar === 'cod') && $('#pilihMetodeBayar')) {
+      $('#pilihMetodeBayar').value = pb.metodeBayar;
+    }
     perbaruiModePengiriman();
 
     var unggul = PRODUK.filter(function (p) { return p.label && p.stok !== 0; })[0] || PRODUK[0];
@@ -533,6 +557,11 @@
 
   if ($('#pilihPengiriman')) {
     $('#pilihPengiriman').onchange = function () {
+      perbaruiModePengiriman();
+    };
+  }
+  if ($('#pilihMetodeBayar')) {
+    $('#pilihMetodeBayar').onchange = function () {
       perbaruiModePengiriman();
     };
   }
@@ -577,7 +606,10 @@
     e.preventDefault(); var f = e.target;
     if (!keranjang.length) return;
     var pgId = pengirimanAktifId();
+    var metode = metodeBayarAktif();
     var t = hitungTotal(keranjang, pgId, TOKO);
+    var isQris = t.delivery && metode === 'qris';
+    var isCod = t.delivery && metode === 'cod';
     var alamatInput = (f.elements.alamat && f.elements.alamat.value.trim()) || '';
 
     if (t.delivery && !alamatInput) {
@@ -586,7 +618,7 @@
       if (f.elements.alamat) f.elements.alamat.focus();
       return;
     }
-    if (t.delivery && !buktiFileAktif && !buktiDataUrlAktif) {
+    if (isQris && !buktiFileAktif && !buktiDataUrlAktif) {
       $('#dataPembeli').open = true;
       toast('Mohon unggah bukti transfer QRIS DANA terlebih dahulu');
       if ($('#inputBukti')) $('#inputBukti').focus();
@@ -598,6 +630,7 @@
       nama: f.elements.nama.value.trim(),
       catatan: f.elements.catatan.value.trim(),
       pengirimanId: pgId,
+      metodeBayar: metode,
       alamat: t.delivery ? alamatInput : ((TOKO.lokasi && TOKO.lokasi.alamat) || ''),
       alamatDelivery: alamatDeliverySimpan
     };
@@ -605,6 +638,7 @@
       nama: pb.nama,
       catatan: pb.catatan,
       pengirimanId: pb.pengirimanId,
+      metodeBayar: pb.metodeBayar,
       alamatDelivery: pb.alamatDelivery
     });
 
@@ -613,8 +647,8 @@
     });
     var kode = root.StrukKit ? root.StrukKit.buatKodePesanan(TOKO.nama) : 'ORD-' + Date.now();
     var pesanWA = buatPesan(itemsSalin, pb, TOKO, kode);
-    var fileBuktiKirim = t.delivery ? buktiFileAktif : null;
-    var dataUrlBuktiKirim = t.delivery ? buktiDataUrlAktif : '';
+    var fileBuktiKirim = isQris ? buktiFileAktif : null;
+    var dataUrlBuktiKirim = isQris ? buktiDataUrlAktif : '';
 
     var pesanan = {
       kode: kode,
@@ -625,8 +659,8 @@
       alamat: pb.alamat,
       subtotal: t.subtotal,
       ongkir: t.ongkir,
-      metode_bayar: t.delivery ? 'QRIS DANA' : 'Bayar di Stan',
-      status_bayar: t.delivery ? 'Menunggu Verifikasi' : 'Belum Bayar',
+      metode_bayar: isQris ? 'QRIS DANA' : (isCod ? 'COD (Bayar di Tempat)' : 'Bayar di Stan'),
+      status_bayar: isQris ? 'Menunggu Verifikasi' : 'Belum Bayar',
       bukti_bayar: dataUrlBuktiKirim,
       items: itemsSalin,
       total: t.total,
