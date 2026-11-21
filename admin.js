@@ -6,11 +6,9 @@
   var PRODUK = root.PRODUK || [];
   var StrukKit = root.StrukKit;
   var KUNCI_SESI = 'katalog-admin-sesi';
-  var KUNCI_KRED = 'katalog-admin-kred';
   var INTERVAL_SYNC_MS = 15000;
   var timerSinkron = null;
   var sedangMuat = false;
-  var sedangRestok = false;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -19,7 +17,7 @@
   }
   function rp(n) { return (TOKO.mataUang || 'Rp') + Math.round(n || 0).toLocaleString('id-ID'); }
 
-  // Simpan stok dasar dari produk.js
+  // Simpan stok awal dari produk.js agar sinkronisasi selalu akurat
   PRODUK.forEach(function (p) {
     if (p.stokAwal == null) p.stokAwal = Number(p.stok) || 0;
   });
@@ -28,7 +26,7 @@
   function toast(m) {
     var t = $('#toast'); if (!t) return;
     t.textContent = m; t.classList.add('tampil');
-    clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 3600);
+    clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2400);
   }
 
   function pasangLogo() {
@@ -44,23 +42,8 @@
   function sudahMasuk() {
     try { return sessionStorage.getItem(KUNCI_SESI) === '1'; } catch (e) { return false; }
   }
-  function setMasuk(v, kred) {
-    try {
-      if (v) {
-        sessionStorage.setItem(KUNCI_SESI, '1');
-        if (kred) sessionStorage.setItem(KUNCI_KRED, JSON.stringify(kred));
-      } else {
-        sessionStorage.removeItem(KUNCI_SESI);
-        sessionStorage.removeItem(KUNCI_KRED);
-      }
-    } catch (e) {}
-  }
-  function ambilKredensial() {
-    try {
-      var raw = sessionStorage.getItem(KUNCI_KRED);
-      if (raw) return JSON.parse(raw);
-    } catch (e) {}
-    return TOKO.admin || { username: 'admin', pin: '' };
+  function setMasuk(v) {
+    try { if (v) sessionStorage.setItem(KUNCI_SESI, '1'); else sessionStorage.removeItem(KUNCI_SESI); } catch (e) {}
   }
 
   function aturPolling(aktif) {
@@ -124,10 +107,6 @@
     $('#statSelesai').textContent = selesai;
   }
 
-  function cariProduk(id) {
-    return PRODUK.find(function (p) { return p.id === id; });
-  }
-
   function renderStok() {
     var wadah = $('#daftarStok');
     if (!wadah || !StrukKit || !StrukKit.terapkanStokRealTime) return;
@@ -143,72 +122,20 @@
     wadah.innerHTML = ringkasan.map(function (r) {
       var cls = r.sisa === 0 ? 'habis' : (r.sisa <= 10 ? 'menipis' : 'tersedia');
       var persen = r.stokAwal > 0 ? Math.min(100, Math.round((r.sisa / r.stokAwal) * 100)) : 0;
-      return '<div class="stok-kartu-admin" data-produk-id="' + esc(r.id) + '">' +
+      return '<div class="stok-kartu-admin">' +
         '<div class="stok-kartu-atas">' +
           '<div><b>' + esc(r.nama) + '</b><small class="redup">' + esc(r.kategori) + ' · ' + esc(rp(r.harga)) + '</small></div>' +
           '<span class="stok-lencana ' + cls + '">' + esc(r.status) + '</span>' +
         '</div>' +
         '<div class="stok-bar"><span class="stok-bar-isi ' + cls + '" style="width:' + persen + '%"></span></div>' +
         '<div class="stok-angka">' +
-          '<span title="Nilai stok di produk.js">Stok: <b>' + r.stokAwal + '</b></span>' +
+          '<span>Awal: <b>' + r.stokAwal + '</b></span>' +
           '<span>Terjual: <b>' + r.terjual + '</b></span>' +
           '<span>Sisa: <b>' + r.sisa + '</b></span>' +
         '</div>' +
         '<div class="stok-omzet redup">Omzet produk: <b>' + esc(rp(r.pendapatan)) + '</b></div>' +
-        '<div class="stok-restok-kontrol">' +
-          '<div class="stok-cepat">' +
-            '<button type="button" class="restok-chip" data-restok-cepat="5" data-pid="' + esc(r.id) + '">+5</button>' +
-            '<button type="button" class="restok-chip" data-restok-cepat="10" data-pid="' + esc(r.id) + '">+10</button>' +
-            '<button type="button" class="restok-chip" data-restok-cepat="20" data-pid="' + esc(r.id) + '">+20</button>' +
-          '</div>' +
-          '<form class="stok-restok-form" data-pid="' + esc(r.id) + '">' +
-            '<input type="number" name="jumlah" step="1" placeholder="± restok" aria-label="Jumlah restok ' + esc(r.nama) + '" required>' +
-            '<button type="submit" class="restok-submit">Simpan ke produk.js</button>' +
-          '</form>' +
-        '</div>' +
       '</div>';
     }).join('');
-  }
-
-  function aturStatusTombolRestok(produkId, nonaktif) {
-    var kartu = $('#daftarStok') && $('#daftarStok').querySelector('[data-produk-id="' + produkId + '"]');
-    if (!kartu) return;
-    Array.prototype.forEach.call(kartu.querySelectorAll('button, input'), function (el) {
-      el.disabled = !!nonaktif;
-    });
-    var btnSub = kartu.querySelector('.restok-submit');
-    if (btnSub) btnSub.textContent = nonaktif ? 'Menyimpan…' : 'Simpan ke produk.js';
-  }
-
-  function jalankanRestok(produkId, jumlah) {
-    if (sedangRestok) {
-      toast('Tunggu proses restok sebelumnya selesai…');
-      return;
-    }
-    var p = cariProduk(produkId);
-    var qty = Math.round(Number(jumlah) || 0);
-    if (!p) return;
-    if (!qty) {
-      toast('Masukkan jumlah restok (contoh: 10 atau -5)');
-      return;
-    }
-    sedangRestok = true;
-    aturStatusTombolRestok(produkId, true);
-    StrukKit.restokKeProdukJS(p, { tambah: qty }, ambilKredensial(), TOKO).then(function (res) {
-      sedangRestok = false;
-      aturStatusTombolRestok(produkId, false);
-      if (res && res.ok) {
-        p.stokAwal = res.stokBaru;
-        renderStok();
-        toast('produk.js diperbarui: ' + p.nama + ' (' + res.stokLama + ' → ' + res.stokBaru + '). Vercel sedang deploy otomatis.');
-      } else {
-        toast('Gagal restok ke produk.js: ' + ((res && res.error) || 'Periksa pengaturan GITHUB_TOKEN di Vercel'));
-      }
-    }).catch(function () {
-      sedangRestok = false;
-      aturStatusTombolRestok(produkId, false);
-      toast('Terjadi kesalahan saat menyimpan ke produk.js');
-    });
   }
 
   function daftarTersaring() {
@@ -364,7 +291,7 @@
     if (u === String(kred.username) && p === String(kred.pin)) {
       galat.hidden = true;
       e.target.reset();
-      setMasuk(true, { username: u, pin: p });
+      setMasuk(true);
       tampilkanTampilan();
     } else {
       galat.textContent = 'Username atau PIN salah. Silakan coba lagi.';
@@ -380,29 +307,6 @@
   $('#btnSegarkan').onclick = function () { muatPesanan(false); };
   $('#cariPesanan').oninput = renderDaftar;
   $('#filterStatus').onchange = renderDaftar;
-
-  if ($('#daftarStok')) {
-    $('#daftarStok').addEventListener('click', function (e) {
-      var btnCepat = e.target.closest('[data-restok-cepat]');
-      if (btnCepat) {
-        jalankanRestok(btnCepat.dataset.pid, +btnCepat.dataset.restokCepat);
-      }
-    });
-
-    $('#daftarStok').addEventListener('submit', function (e) {
-      var form = e.target.closest('.stok-restok-form');
-      if (!form) return;
-      e.preventDefault();
-      var inp = form.elements.jumlah;
-      var val = inp ? Number(inp.value) : 0;
-      if (!val) {
-        toast('Isi jumlah restok terlebih dahulu (mis. 15 atau -5)');
-        return;
-      }
-      jalankanRestok(form.dataset.pid, val);
-      form.reset();
-    });
-  }
 
   if ($('#btnCetakLaporan')) {
     $('#btnCetakLaporan').onclick = function () {

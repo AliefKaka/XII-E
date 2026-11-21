@@ -1,4 +1,4 @@
-/* Modul Struk Digital (PDF/Print & PNG Canvas) + Bukti Transfer + Stok Real-Time & Restok produk.js + Laporan Omset + Integrasi Supabase / Vercel API — proyek XII-E */
+/* Modul Struk Digital (PDF/Print & PNG Canvas) + Bukti Transfer + Stok Real-Time + Laporan Omset + Integrasi Supabase / Vercel API — proyek XII-E */
 (function (root) {
   'use strict';
 
@@ -98,6 +98,7 @@
     try {
       localStorage.setItem(KUNCI_RIWAYAT, JSON.stringify((list || []).slice(0, 100)));
     } catch (e) {
+      // Jika storage penuh karena gambar bukti, simpan ulang tanpa gambar pada riwayat lama
       try {
         var ringkas = (list || []).slice(0, 50).map(function (x, idx) {
           if (idx === 0) return x;
@@ -157,7 +158,7 @@
     };
   }
 
-  // ================= Perhitungan Stok Real-Time & Restok Langsung ke produk.js =================
+  // ================= Perhitungan Stok Real-Time dari Riwayat Pesanan =================
   function hitungTerjualPerProduk(pesananList) {
     var byId = {};
     var byNama = {};
@@ -228,46 +229,6 @@
     return ringkasan;
   }
 
-  function restokKeProdukJS(produk, opsi, kredensial, toko) {
-    if (!produk || !produk.id) {
-      return Promise.resolve({ ok: false, error: 'Produk tidak valid.' });
-    }
-    var endpoint = (toko && toko.restokEndpoint) || '/api/restok';
-    var pakaiHttp = typeof location !== 'undefined' && /^https?:$/i.test(location.protocol);
-    if (!pakaiHttp || typeof fetch !== 'function') {
-      return Promise.resolve({
-        ok: false,
-        error: 'Restok otomatis ke produk.js membutuhkan web berjalan di Vercel/HTTP dengan GITHUB_TOKEN.'
-      });
-    }
-    var payload = {
-      id: produk.id,
-      nama: produk.nama,
-      username: kredensial && kredensial.username ? kredensial.username : '',
-      pin: kredensial && kredensial.pin ? kredensial.pin : ''
-    };
-    if (opsi && opsi.stokBaru != null && opsi.stokBaru !== '') {
-      payload.stokBaru = Number(opsi.stokBaru);
-    } else {
-      payload.tambah = Number(opsi && opsi.tambah) || 0;
-    }
-
-    return fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (data) {
-        if (!r.ok) {
-          throw new Error((data && data.error) || ('HTTP ' + r.status));
-        }
-        return data;
-      });
-    }).catch(function (err) {
-      return { ok: false, error: err && err.message ? err.message : String(err) };
-    });
-  }
-
   // ================= Laporan Omset Detail (PDF/Print & CSV/Excel) =================
   function hitungLaporanOmset(pesananList, produkList, infoFilter) {
     var semua = (pesananList || []).map(normalisasiPesanan);
@@ -306,6 +267,7 @@
       perStatusBayar[sb].nominal += Number(p.total) || 0;
     });
 
+    // Untuk rekap stok per produk, gunakan semuaPesanan jika diberikan agar sisa stok selalu akurat secara global
     var sumberStok = (infoFilter && Array.isArray(infoFilter.semuaPesanan)) ? infoFilter.semuaPesanan : semua;
     var rekapStokGlobal = hitungRingkasanStok(produkList || [], sumberStok);
     var terjualFilter = hitungTerjualPerProduk(semua);
@@ -434,7 +396,7 @@
 
       '<h3>Rekap Penjualan &amp; Sisa Stok Produk</h3>' +
       '<table class="laporan-tabel">' +
-        '<thead><tr><th>Produk</th><th class="num">Harga</th><th class="num">Stok (produk.js)</th><th class="num">Terjual</th><th class="num">Sisa Stok</th><th class="num">Pendapatan</th></tr></thead>' +
+        '<thead><tr><th>Produk</th><th class="num">Harga</th><th class="num">Stok Awal</th><th class="num">Terjual</th><th class="num">Sisa Stok</th><th class="num">Pendapatan</th></tr></thead>' +
         '<tbody>' + barisProduk + '</tbody>' +
       '</table>' +
 
@@ -498,7 +460,7 @@
     baris.push([]);
 
     baris.push(['REKAP PENJUALAN & SISA STOK PRODUK']);
-    baris.push(['ID Produk', 'Nama Produk', 'Kategori', 'Harga Satuan', 'Stok (produk.js)', 'Terjual (Sesuai Filter)', 'Total Terjual Global', 'Sisa Stok', 'Status Stok', 'Pendapatan (Rp)']);
+    baris.push(['ID Produk', 'Nama Produk', 'Kategori', 'Harga Satuan', 'Stok Awal', 'Terjual (Sesuai Filter)', 'Total Terjual Global', 'Sisa Stok', 'Status Stok', 'Pendapatan (Rp)']);
     lap.rekapProduk.forEach(function (r) {
       baris.push([r.id, r.nama, r.kategori, r.harga, r.stokAwal, r.terjualLaporan, r.terjualTotal, r.sisaStok, r.statusStok, r.pendapatanLaporan]);
     });
@@ -1117,7 +1079,6 @@
     supabaseAktif: supabaseAktif,
     bacaLokal: bacaLokal,
     simpanPesanan: simpanPesanan,
-    restokKeProdukJS: restokKeProdukJS,
     ambilSemuaPesanan: ambilSemuaPesanan,
     ubahStatusPesanan: ubahStatusPesanan,
     ubahStatusBayar: ubahStatusBayar,
