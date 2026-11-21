@@ -480,3 +480,17 @@ html.mode-pilih [data-pilih-hover]{outline:2px solid #f43f5e!important;outline-o
   body.sedang-cetak-laporan .laporan-tabel tr{page-break-inside:avoid;page-break-after:auto}
   body.sedang-cetak-laporan .laporan-tabel thead{display:table-header-group}
 }
+
+
+/* ===== kontrol restok langsung di panel admin ===== */
+.stok-restok-kontrol{display:grid;gap:8px;padding-top:8px;border-top:1px dashed var(--garis-kuat)}
+.stok-cepat{display:flex;flex-wrap:wrap;gap:6px}
+.restok-chip{min-height:32px;padding:4px 10px;border-radius:999px;border:1px solid var(--garis-kuat);background:var(--kartu);color:var(--teks);font:700 12px/1 var(--sans);transition:background-color .18s,border-color .18s}
+.restok-chip:hover{border-color:var(--teks);background:var(--tombol);color:var(--tombol-teks)}
+.restok-chip.reset{color:#dc2626;border-color:color-mix(in srgb,#dc2626 35%,var(--garis));margin-left:auto}
+.restok-chip.reset:hover{background:#dc2626;color:#fff;border-color:#dc2626}
+[data-mode=gelap] .restok-chip.reset{color:#fca5a5}
+.stok-restok-form{display:flex;gap:6px}
+.stok-restok-form input{flex:1;min-width:0;min-height:36px;padding:6px 10px;border-radius:999px;border:1px solid var(--garis-kuat);background:var(--kartu);font-size:13px}
+.restok-submit{min-height:36px;padding:6px 14px;border-radius:999px;border:0;background:var(--tombol);color:var(--tombol-teks);font:700 12.5px/1 var(--sans);white-space:nowrap}
+.restok-submit:hover{background:var(--tombol-hover)}

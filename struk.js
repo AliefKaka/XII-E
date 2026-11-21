@@ -1,4 +1,4 @@
-/* Modul Struk Digital (PDF/Print & PNG Canvas) + Bukti Transfer + Stok Real-Time + Laporan Omset + Integrasi Supabase / Vercel API — proyek XII-E */
+/* Modul Struk Digital (PDF/Print & PNG Canvas) + Bukti Transfer + Stok Real-Time & Restok Admin + Laporan Omset + Integrasi Supabase / Vercel API — proyek XII-E */
 (function (root) {
   'use strict';
 
@@ -26,6 +26,23 @@
     var acak = '';
     for (var i = 0; i < 4; i++) acak += huruf.charAt(Math.floor(Math.random() * huruf.length));
     return awalan + '-' + tgl + '-' + acak;
+  }
+
+  function buatKodeRestok() {
+    var d = new Date();
+    var pad = function (x) { return String(x).padStart(2, '0'); };
+    var tgl = String(d.getFullYear()).slice(-2) + pad(d.getMonth() + 1) + pad(d.getDate());
+    var huruf = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var acak = '';
+    for (var i = 0; i < 5; i++) acak += huruf.charAt(Math.floor(Math.random() * huruf.length));
+    return 'RESTOK-' + tgl + '-' + acak;
+  }
+
+  function adalahRestok(row) {
+    if (!row) return false;
+    var st = String(row.status || '').trim().toLowerCase();
+    var kd = String(row.kode || '').trim().toUpperCase();
+    return st === 'restok' || kd.indexOf('RESTOK-') === 0;
   }
 
   function formatWaktu(iso) {
@@ -84,7 +101,7 @@
     return h;
   }
 
-  function bacaLokal() {
+  function bacaLokalMentah() {
     try {
       var raw = localStorage.getItem(KUNCI_RIWAYAT);
       var arr = raw ? JSON.parse(raw) : [];
@@ -94,13 +111,21 @@
     }
   }
 
+  function bacaLokal() {
+    return bacaLokalMentah().filter(function (x) { return !adalahRestok(x); });
+  }
+
+  function bacaRestokLokal() {
+    return bacaLokalMentah().filter(adalahRestok);
+  }
+
   function tulisLokal(list) {
     try {
-      localStorage.setItem(KUNCI_RIWAYAT, JSON.stringify((list || []).slice(0, 100)));
+      localStorage.setItem(KUNCI_RIWAYAT, JSON.stringify((list || []).slice(0, 200)));
     } catch (e) {
       // Jika storage penuh karena gambar bukti, simpan ulang tanpa gambar pada riwayat lama
       try {
-        var ringkas = (list || []).slice(0, 50).map(function (x, idx) {
+        var ringkas = (list || []).slice(0, 100).map(function (x, idx) {
           if (idx === 0) return x;
           var salin = Object.assign({}, x);
           salin.bukti_bayar = '';
@@ -112,7 +137,7 @@
   }
 
   function simpanLokal(pesanan) {
-    var list = bacaLokal().filter(function (x) { return x.kode !== pesanan.kode; });
+    var list = bacaLokalMentah().filter(function (x) { return x.kode !== pesanan.kode; });
     list.unshift(pesanan);
     tulisLokal(list);
   }
@@ -158,13 +183,14 @@
     };
   }
 
-  // ================= Perhitungan Stok Real-Time dari Riwayat Pesanan =================
+  // ================= Perhitungan Stok Real-Time & Restok Admin =================
   function hitungTerjualPerProduk(pesananList) {
     var byId = {};
     var byNama = {};
     var pendapatanById = {};
     var pendapatanByNama = {};
     (pesananList || []).forEach(function (raw) {
+      if (adalahRestok(raw)) return;
       var p = normalisasiPesanan(raw);
       if (String(p.status || '').toLowerCase() === 'dibatalkan') return;
       (p.items || []).forEach(function (it) {
@@ -191,8 +217,36 @@
     };
   }
 
-  function hitungRingkasanStok(produkList, pesananList) {
+  function hitungRestokPerProduk(pesananList, restokList) {
+    var byId = {};
+    var byNama = {};
+    var dilihat = {};
+    var sumber = [].concat(restokList || [], pesananList || []);
+    sumber.forEach(function (raw) {
+      if (!adalahRestok(raw)) return;
+      var p = normalisasiPesanan(raw);
+      var kunciUnik = p.id != null ? ('id:' + p.id) : ('kode:' + p.kode);
+      if (dilihat[kunciUnik]) return;
+      dilihat[kunciUnik] = true;
+      (p.items || []).forEach(function (it) {
+        var qty = Math.round(Number(it.qty) || 0);
+        if (!qty) return;
+        if (it.id) {
+          var kId = String(it.id).trim();
+          byId[kId] = (byId[kId] || 0) + qty;
+        }
+        if (it.nama) {
+          var kNama = String(it.nama).trim().toLowerCase();
+          byNama[kNama] = (byNama[kNama] || 0) + qty;
+        }
+      });
+    });
+    return { byId: byId, byNama: byNama };
+  }
+
+  function hitungRingkasanStok(produkList, pesananList, restokList) {
     var rekap = hitungTerjualPerProduk(pesananList);
+    var rekapRestok = hitungRestokPerProduk(pesananList, restokList);
     return (produkList || []).map(function (p) {
       var stokAwal = p.stokAwal != null ? Number(p.stokAwal) : Number(p.stok);
       if (isNaN(stokAwal) || stokAwal < 0) stokAwal = 0;
@@ -201,7 +255,10 @@
       var pakaiId = kId && rekap.byId[kId] != null;
       var terjual = pakaiId ? rekap.byId[kId] : (rekap.byNama[kNama] || 0);
       var pendapatan = pakaiId ? (rekap.pendapatanById[kId] || 0) : (rekap.pendapatanByNama[kNama] || 0);
-      var sisa = Math.max(0, stokAwal - terjual);
+      var pakaiIdRestok = kId && rekapRestok.byId[kId] != null;
+      var restokAdmin = pakaiIdRestok ? rekapRestok.byId[kId] : (rekapRestok.byNama[kNama] || 0);
+      var stokTotal = Math.max(0, stokAwal + restokAdmin);
+      var sisa = Math.max(0, stokTotal - terjual);
       var status = sisa === 0 ? 'Habis' : (sisa <= 10 ? 'Menipis' : 'Tersedia');
       return {
         id: p.id,
@@ -209,6 +266,8 @@
         kategori: p.kategori || 'Lainnya',
         harga: Number(p.harga) || 0,
         stokAwal: stokAwal,
+        restokAdmin: restokAdmin,
+        stokTotal: stokTotal,
         terjual: terjual,
         sisa: sisa,
         pendapatan: pendapatan,
@@ -217,21 +276,63 @@
     });
   }
 
-  function terapkanStokRealTime(produkList, pesananList) {
-    var ringkasan = hitungRingkasanStok(produkList, pesananList);
+  function terapkanStokRealTime(produkList, pesananList, restokList) {
+    var ringkasan = hitungRingkasanStok(produkList, pesananList, restokList);
     (produkList || []).forEach(function (p, idx) {
       var r = ringkasan[idx];
       if (!r) return;
       if (p.stokAwal == null) p.stokAwal = r.stokAwal;
+      p.restokAdmin = r.restokAdmin;
       p.terjual = r.terjual;
       p.stok = r.sisa;
     });
     return ringkasan;
   }
 
+  function simpanRestok(produk, jumlah, catatan, toko) {
+    var qty = Math.round(Number(jumlah) || 0);
+    if (!produk || !qty) {
+      return Promise.resolve({ ok: false, error: 'Jumlah restok tidak valid.' });
+    }
+    var tanda = qty > 0 ? ('+' + qty) : String(qty);
+    var rec = {
+      kode: buatKodeRestok(),
+      created_at: new Date().toISOString(),
+      nama: 'Admin (Restok)',
+      catatan: catatan ? String(catatan).trim() : ('Restok ' + produk.nama + ' (' + tanda + ')'),
+      pengiriman: 'Restok Admin',
+      alamat: '',
+      ongkir: 0,
+      metode_bayar: 'Restok',
+      status_bayar: 'Lunas',
+      bukti_bayar: '',
+      items: [{ id: produk.id, nama: produk.nama, label: 'Restok Admin', harga: 0, qty: qty }],
+      total: 0,
+      status: 'Restok',
+      pesan_wa: ''
+    };
+    return simpanPesanan(rec, toko);
+  }
+
+  function resetRestokProduk(produkId, restokList, toko) {
+    var targetId = String(produkId || '').trim();
+    var cocok = (restokList || []).filter(function (r) {
+      if (!adalahRestok(r)) return false;
+      return (r.items || []).some(function (it) { return String(it.id || '').trim() === targetId; });
+    });
+    if (!cocok.length) return Promise.resolve({ ok: true, terhapus: 0 });
+    return Promise.all(cocok.map(function (r) {
+      var kunci = r.id != null ? r.id : r.kode;
+      return hapusPesanan(kunci, toko);
+    })).then(function (hasil) {
+      var semuaOk = hasil.every(function (h) { return h && h.ok; });
+      return { ok: semuaOk, terhapus: cocok.length };
+    });
+  }
+
   // ================= Laporan Omset Detail (PDF/Print & CSV/Excel) =================
   function hitungLaporanOmset(pesananList, produkList, infoFilter) {
-    var semua = (pesananList || []).map(normalisasiPesanan);
+    var semua = (pesananList || []).filter(function (r) { return !adalahRestok(r); }).map(normalisasiPesanan);
     var aktif = semua.filter(function (p) { return String(p.status || '').toLowerCase() !== 'dibatalkan'; });
     var batal = semua.filter(function (p) { return String(p.status || '').toLowerCase() === 'dibatalkan'; });
 
@@ -267,9 +368,10 @@
       perStatusBayar[sb].nominal += Number(p.total) || 0;
     });
 
-    // Untuk rekap stok per produk, gunakan semuaPesanan jika diberikan agar sisa stok selalu akurat secara global
+    // Untuk rekap stok per produk, gunakan semuaPesanan & semuaRestok jika diberikan agar sisa stok selalu akurat secara global
     var sumberStok = (infoFilter && Array.isArray(infoFilter.semuaPesanan)) ? infoFilter.semuaPesanan : semua;
-    var rekapStokGlobal = hitungRingkasanStok(produkList || [], sumberStok);
+    var sumberRestok = (infoFilter && Array.isArray(infoFilter.semuaRestok)) ? infoFilter.semuaRestok : [];
+    var rekapStokGlobal = hitungRingkasanStok(produkList || [], sumberStok, sumberRestok);
     var terjualFilter = hitungTerjualPerProduk(semua);
     var rekapProduk = rekapStokGlobal.map(function (r) {
       var kId = String(r.id || '').trim();
@@ -281,6 +383,8 @@
         kategori: r.kategori,
         harga: r.harga,
         stokAwal: r.stokAwal,
+        restokAdmin: r.restokAdmin,
+        stokTotal: r.stokTotal,
         terjualLaporan: pakaiId ? terjualFilter.byId[kId] : (terjualFilter.byNama[kNama] || 0),
         pendapatanLaporan: pakaiId ? (terjualFilter.pendapatanById[kId] || 0) : (terjualFilter.pendapatanByNama[kNama] || 0),
         terjualTotal: r.terjual,
@@ -328,16 +432,18 @@
 
     var barisProduk = lap.rekapProduk.length
       ? lap.rekapProduk.map(function (r) {
+          var restokTeks = r.restokAdmin > 0 ? ('+' + r.restokAdmin) : String(r.restokAdmin || 0);
           return '<tr>' +
             '<td><b>' + esc(r.nama) + '</b><br><small>' + esc(r.kategori) + '</small></td>' +
             '<td class="num">' + esc(rupiah(r.harga, mu)) + '</td>' +
             '<td class="num">' + r.stokAwal + '</td>' +
+            '<td class="num">' + esc(restokTeks) + '</td>' +
             '<td class="num">' + r.terjualLaporan + '</td>' +
             '<td class="num"><b>' + r.sisaStok + '</b> (' + esc(r.statusStok) + ')</td>' +
             '<td class="num"><b>' + esc(rupiah(r.pendapatanLaporan, mu)) + '</b></td>' +
           '</tr>';
         }).join('')
-      : '<tr><td colspan="6" class="kosong-sel">Tidak ada data produk</td></tr>';
+      : '<tr><td colspan="7" class="kosong-sel">Tidak ada data produk</td></tr>';
 
     var barisPesanan = lap.pesanan.length
       ? lap.pesanan.map(function (p, idx) {
@@ -396,7 +502,7 @@
 
       '<h3>Rekap Penjualan &amp; Sisa Stok Produk</h3>' +
       '<table class="laporan-tabel">' +
-        '<thead><tr><th>Produk</th><th class="num">Harga</th><th class="num">Stok Awal</th><th class="num">Terjual</th><th class="num">Sisa Stok</th><th class="num">Pendapatan</th></tr></thead>' +
+        '<thead><tr><th>Produk</th><th class="num">Harga</th><th class="num">Stok Awal</th><th class="num">Restok Admin</th><th class="num">Terjual</th><th class="num">Sisa Stok</th><th class="num">Pendapatan</th></tr></thead>' +
         '<tbody>' + barisProduk + '</tbody>' +
       '</table>' +
 
@@ -460,9 +566,9 @@
     baris.push([]);
 
     baris.push(['REKAP PENJUALAN & SISA STOK PRODUK']);
-    baris.push(['ID Produk', 'Nama Produk', 'Kategori', 'Harga Satuan', 'Stok Awal', 'Terjual (Sesuai Filter)', 'Total Terjual Global', 'Sisa Stok', 'Status Stok', 'Pendapatan (Rp)']);
+    baris.push(['ID Produk', 'Nama Produk', 'Kategori', 'Harga Satuan', 'Stok Awal (produk.js)', 'Restok Admin', 'Terjual (Sesuai Filter)', 'Total Terjual Global', 'Sisa Stok', 'Status Stok', 'Pendapatan (Rp)']);
     lap.rekapProduk.forEach(function (r) {
-      baris.push([r.id, r.nama, r.kategori, r.harga, r.stokAwal, r.terjualLaporan, r.terjualTotal, r.sisaStok, r.statusStok, r.pendapatanLaporan]);
+      baris.push([r.id, r.nama, r.kategori, r.harga, r.stokAwal, r.restokAdmin, r.terjualLaporan, r.terjualTotal, r.sisaStok, r.statusStok, r.pendapatanLaporan]);
     });
     baris.push([]);
 
@@ -562,9 +668,21 @@
     });
   }
 
+  function pisahPesananDanRestok(rows) {
+    var normal = (Array.isArray(rows) ? rows : []).map(normalisasiPesanan);
+    var pesanan = [];
+    var restok = [];
+    normal.forEach(function (r) {
+      if (adalahRestok(r)) restok.push(r);
+      else pesanan.push(r);
+    });
+    return { pesanan: pesanan, restok: restok };
+  }
+
   function ambilSemuaPesanan(toko) {
     if (!supabaseAktif(toko) || typeof fetch !== 'function') {
-      return Promise.resolve({ ok: true, mode: 'lokal', data: bacaLokal().map(normalisasiPesanan) });
+      var lokal = pisahPesananDanRestok(bacaLokalMentah());
+      return Promise.resolve({ ok: true, mode: 'lokal', data: lokal.pesanan, restok: lokal.restok });
     }
     var langsung = supabaseLangsungAktif(toko);
     var target = langsung ? urlRest(toko, '?select=*&order=created_at.desc') : urlApiVercel(toko);
@@ -579,15 +697,16 @@
       }
       return r.json();
     }).then(function (rows) {
-      var list = Array.isArray(rows) ? rows.map(normalisasiPesanan) : [];
-      return { ok: true, mode: 'supabase', data: list };
+      var hasil = pisahPesananDanRestok(rows);
+      return { ok: true, mode: 'supabase', data: hasil.pesanan, restok: hasil.restok };
     }).catch(function (err) {
-      return { ok: false, mode: 'lokal', data: bacaLokal().map(normalisasiPesanan), error: err && err.message ? err.message : String(err) };
+      var lokal = pisahPesananDanRestok(bacaLokalMentah());
+      return { ok: false, mode: 'lokal', data: lokal.pesanan, restok: lokal.restok, error: err && err.message ? err.message : String(err) };
     });
   }
 
   function patchPesanan(idAtauKode, perubahan, toko) {
-    var list = bacaLokal();
+    var list = bacaLokalMentah();
     list.forEach(function (x) {
       if (String(x.id) === String(idAtauKode) || x.kode === idAtauKode) {
         Object.keys(perubahan).forEach(function (k) { x[k] = perubahan[k]; });
@@ -628,7 +747,7 @@
   }
 
   function hapusPesanan(idAtauKode, toko) {
-    var list = bacaLokal().filter(function (x) {
+    var list = bacaLokalMentah().filter(function (x) {
       return String(x.id) !== String(idAtauKode) && x.kode !== idAtauKode;
     });
     tulisLokal(list);
@@ -1074,17 +1193,23 @@
     KETERANGAN_STRUK: KETERANGAN_STRUK,
     KETERANGAN_STRUK_DELIVERY: KETERANGAN_STRUK_DELIVERY,
     buatKodePesanan: buatKodePesanan,
+    buatKodeRestok: buatKodeRestok,
+    adalahRestok: adalahRestok,
     formatWaktu: formatWaktu,
     bersihkanBaseUrl: bersihkanBaseUrl,
     supabaseAktif: supabaseAktif,
     bacaLokal: bacaLokal,
+    bacaRestokLokal: bacaRestokLokal,
     simpanPesanan: simpanPesanan,
+    simpanRestok: simpanRestok,
+    resetRestokProduk: resetRestokProduk,
     ambilSemuaPesanan: ambilSemuaPesanan,
     ubahStatusPesanan: ubahStatusPesanan,
     ubahStatusBayar: ubahStatusBayar,
     hapusPesanan: hapusPesanan,
     normalisasiPesanan: normalisasiPesanan,
     hitungTerjualPerProduk: hitungTerjualPerProduk,
+    hitungRestokPerProduk: hitungRestokPerProduk,
     hitungRingkasanStok: hitungRingkasanStok,
     terapkanStokRealTime: terapkanStokRealTime,
     hitungLaporanOmset: hitungLaporanOmset,

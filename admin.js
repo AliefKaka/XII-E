@@ -26,7 +26,7 @@
   function toast(m) {
     var t = $('#toast'); if (!t) return;
     t.textContent = m; t.classList.add('tampil');
-    clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2400);
+    clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2800);
   }
 
   function pasangLogo() {
@@ -38,6 +38,7 @@
   }
 
   var semuaPesanan = [];
+  var semuaRestok = [];
 
   function sudahMasuk() {
     try { return sessionStorage.getItem(KUNCI_SESI) === '1'; } catch (e) { return false; }
@@ -78,6 +79,7 @@
     StrukKit.ambilSemuaPesanan(TOKO).then(function (res) {
       sedangMuat = false;
       semuaPesanan = (res && res.data) || [];
+      semuaRestok = (res && res.restok) || [];
       if (res.mode === 'supabase' && res.ok) {
         badge.className = 'admin-koneksi';
         badge.innerHTML = '<i></i>Terhubung ke Supabase (Real-time)';
@@ -107,10 +109,14 @@
     $('#statSelesai').textContent = selesai;
   }
 
+  function cariProduk(id) {
+    return PRODUK.find(function (p) { return p.id === id; });
+  }
+
   function renderStok() {
     var wadah = $('#daftarStok');
     if (!wadah || !StrukKit || !StrukKit.terapkanStokRealTime) return;
-    var ringkasan = StrukKit.terapkanStokRealTime(PRODUK, semuaPesanan);
+    var ringkasan = StrukKit.terapkanStokRealTime(PRODUK, semuaPesanan, semuaRestok);
     var info = $('#infoSinkronStok');
     if (info) {
       info.textContent = 'Diperbarui ' + StrukKit.formatWaktu(new Date().toISOString());
@@ -121,21 +127,54 @@
     }
     wadah.innerHTML = ringkasan.map(function (r) {
       var cls = r.sisa === 0 ? 'habis' : (r.sisa <= 10 ? 'menipis' : 'tersedia');
-      var persen = r.stokAwal > 0 ? Math.min(100, Math.round((r.sisa / r.stokAwal) * 100)) : 0;
-      return '<div class="stok-kartu-admin">' +
+      var basisBar = Math.max(1, r.stokTotal || r.stokAwal || 1);
+      var persen = Math.min(100, Math.round((r.sisa / basisBar) * 100));
+      var restokLabel = r.restokAdmin > 0 ? ('+' + r.restokAdmin) : String(r.restokAdmin || 0);
+      return '<div class="stok-kartu-admin" data-produk-id="' + esc(r.id) + '">' +
         '<div class="stok-kartu-atas">' +
           '<div><b>' + esc(r.nama) + '</b><small class="redup">' + esc(r.kategori) + ' · ' + esc(rp(r.harga)) + '</small></div>' +
           '<span class="stok-lencana ' + cls + '">' + esc(r.status) + '</span>' +
         '</div>' +
         '<div class="stok-bar"><span class="stok-bar-isi ' + cls + '" style="width:' + persen + '%"></span></div>' +
         '<div class="stok-angka">' +
-          '<span>Awal: <b>' + r.stokAwal + '</b></span>' +
+          '<span title="Stok dasar di produk.js">produk.js: <b>' + r.stokAwal + '</b></span>' +
+          '<span title="Tambahan restok dari panel admin">Restok: <b>' + esc(restokLabel) + '</b></span>' +
           '<span>Terjual: <b>' + r.terjual + '</b></span>' +
           '<span>Sisa: <b>' + r.sisa + '</b></span>' +
         '</div>' +
         '<div class="stok-omzet redup">Omzet produk: <b>' + esc(rp(r.pendapatan)) + '</b></div>' +
+        '<div class="stok-restok-kontrol">' +
+          '<div class="stok-cepat">' +
+            '<button type="button" class="restok-chip" data-restok-cepat="5" data-pid="' + esc(r.id) + '">+5</button>' +
+            '<button type="button" class="restok-chip" data-restok-cepat="10" data-pid="' + esc(r.id) + '">+10</button>' +
+            '<button type="button" class="restok-chip" data-restok-cepat="20" data-pid="' + esc(r.id) + '">+20</button>' +
+            (r.restokAdmin !== 0 ? '<button type="button" class="restok-chip reset" data-restok-reset="' + esc(r.id) + '" title="Hapus semua restok admin untuk produk ini">Reset</button>' : '') +
+          '</div>' +
+          '<form class="stok-restok-form" data-pid="' + esc(r.id) + '">' +
+            '<input type="number" name="jumlah" step="1" placeholder="± jumlah" aria-label="Jumlah restok ' + esc(r.nama) + '" required>' +
+            '<button type="submit" class="restok-submit">Restok</button>' +
+          '</form>' +
+        '</div>' +
       '</div>';
     }).join('');
+  }
+
+  function jalankanRestok(produkId, jumlah) {
+    var p = cariProduk(produkId);
+    var qty = Math.round(Number(jumlah) || 0);
+    if (!p) return;
+    if (!qty) {
+      toast('Masukkan jumlah restok (contoh: 10 atau -5)');
+      return;
+    }
+    StrukKit.simpanRestok(p, qty, '', TOKO).then(function (res) {
+      if (res && res.data) {
+        semuaRestok.unshift(StrukKit.normalisasiPesanan(res.data));
+      }
+      renderStok();
+      var tanda = qty > 0 ? ('+' + qty) : String(qty);
+      toast((res && res.ok ? 'Restok tersimpan: ' : 'Restok disimpan lokal: ') + p.nama + ' (' + tanda + ') · Sisa ' + p.stok);
+    });
   }
 
   function daftarTersaring() {
@@ -308,13 +347,51 @@
   $('#cariPesanan').oninput = renderDaftar;
   $('#filterStatus').onchange = renderDaftar;
 
+  if ($('#daftarStok')) {
+    $('#daftarStok').addEventListener('click', function (e) {
+      var btnCepat = e.target.closest('[data-restok-cepat]');
+      if (btnCepat) {
+        jalankanRestok(btnCepat.dataset.pid, +btnCepat.dataset.restokCepat);
+        return;
+      }
+      var btnReset = e.target.closest('[data-restok-reset]');
+      if (btnReset) {
+        var pid = btnReset.dataset.restokReset;
+        var prod = cariProduk(pid);
+        if (!confirm('Reset semua tambahan restok admin untuk ' + (prod ? prod.nama : pid) + '? Stok akan kembali mengikuti produk.js dikurangi pesanan aktif.')) return;
+        StrukKit.resetRestokProduk(pid, semuaRestok, TOKO).then(function (res) {
+          semuaRestok = semuaRestok.filter(function (r) {
+            return !(r.items || []).some(function (it) { return String(it.id || '').trim() === String(pid).trim(); });
+          });
+          renderStok();
+          toast(res && res.ok ? 'Restok admin direset' : 'Restok admin direset lokal (cek Supabase)');
+        });
+      }
+    });
+
+    $('#daftarStok').addEventListener('submit', function (e) {
+      var form = e.target.closest('.stok-restok-form');
+      if (!form) return;
+      e.preventDefault();
+      var inp = form.elements.jumlah;
+      var val = inp ? Number(inp.value) : 0;
+      if (!val) {
+        toast('Isi jumlah restok terlebih dahulu (mis. 15 atau -5)');
+        return;
+      }
+      jalankanRestok(form.dataset.pid, val);
+      form.reset();
+    });
+  }
+
   if ($('#btnCetakLaporan')) {
     $('#btnCetakLaporan').onclick = function () {
       var list = daftarTersaring();
       StrukKit.cetakLaporanOmsetPDF(list, PRODUK, TOKO, {
         status: $('#filterStatus').value || 'Semua',
         cari: ($('#cariPesanan').value || '').trim(),
-        semuaPesanan: semuaPesanan
+        semuaPesanan: semuaPesanan,
+        semuaRestok: semuaRestok
       });
     };
   }
@@ -325,7 +402,8 @@
       var namaFile = StrukKit.unduhLaporanCSV(list, PRODUK, TOKO, {
         status: $('#filterStatus').value || 'Semua',
         cari: ($('#cariPesanan').value || '').trim(),
-        semuaPesanan: semuaPesanan
+        semuaPesanan: semuaPesanan,
+        semuaRestok: semuaRestok
       });
       toast('Laporan diunduh: ' + namaFile);
     };
