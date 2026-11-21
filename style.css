@@ -411,3 +411,72 @@ html.mode-pilih [data-pilih-hover]{outline:2px solid #f43f5e!important;outline-o
 .struk-bukti-box{margin-top:12px;padding:12px;border-radius:var(--r-kecil);background:var(--latar);border:1px solid var(--garis);display:grid;gap:8px;justify-items:center;text-align:center}
 .struk-bukti-box small{color:var(--redup);font-weight:600;font-size:12.5px}
 .struk-bukti-box img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain}
+
+
+/* ===== status kartu stok habis di katalog ===== */
+.kartu.habis .kartu-gambar img{opacity:.5;filter:grayscale(.6)}
+.kartu.habis:hover .kartu-gambar img{transform:none}
+.sorotan-kartu.habis .sorotan-gambar img{opacity:.55;filter:grayscale(.5)}
+
+/* ===== panel stok real-time & bar aksi admin ===== */
+.admin-bar-aksi{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.admin-stok-bagian{margin-bottom:22px;padding:18px 20px;border-radius:var(--radius);background:var(--kartu);border:1px solid var(--garis);display:grid;gap:14px}
+.admin-stok-kepala{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:8px}
+.admin-stok-kepala h2{margin:0;font:700 18px/1.2 var(--sans);letter-spacing:-.02em}
+.admin-stok-kepala small{display:block;font-size:13px;margin-top:2px}
+.admin-stok-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.stok-kartu-admin{padding:14px 15px;border-radius:var(--r-kecil);background:var(--latar);border:1px solid var(--garis);display:grid;gap:8px}
+.stok-kartu-atas{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.stok-kartu-atas b{display:block;font-size:15px;line-height:1.25}
+.stok-kartu-atas small{display:block;font-size:12px;margin-top:2px}
+.stok-lencana{padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap}
+.stok-lencana.tersedia{background:var(--aksen2-muda);color:var(--aksen2-teks)}
+.stok-lencana.menipis{background:color-mix(in srgb,#d97706 18%,var(--kartu));color:#b45309}
+[data-mode=gelap] .stok-lencana.menipis{color:#fcd34d}
+.stok-lencana.habis{background:color-mix(in srgb,#dc2626 16%,var(--kartu));color:#dc2626}
+[data-mode=gelap] .stok-lencana.habis{color:#fca5a5}
+.stok-bar{height:7px;border-radius:999px;background:var(--garis);overflow:hidden}
+.stok-bar-isi{display:block;height:100%;border-radius:999px;transition:width .35s var(--halus)}
+.stok-bar-isi.tersedia{background:var(--aksen2)}
+.stok-bar-isi.menipis{background:#d97706}
+.stok-bar-isi.habis{background:#dc2626}
+.stok-angka{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--redup)}
+.stok-angka b{color:var(--teks);font-weight:700}
+.stok-omzet{font-size:12.5px;padding-top:6px;border-top:1px dashed var(--garis-kuat)}
+.stok-omzet b{color:var(--teks)}
+
+/* ===== area cetak laporan omset detail (PDF / Print A4) ===== */
+.area-cetak-laporan{display:none}
+.laporan-kertas{background:#fff;color:#1b1d1a;font:12.5px/1.45 var(--sans);display:grid;gap:16px}
+.laporan-kepala{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:12px;border-bottom:2px solid #1b1d1a}
+.laporan-kepala h1{margin:6px 0 4px;font:800 22px/1.1 var(--sans)}
+.laporan-kepala p{margin:0;color:#555c54;font-size:12px;max-width:420px}
+.laporan-meta{display:grid;gap:4px;font-size:12px;text-align:right;min-width:210px}
+.laporan-meta div{display:flex;justify-content:space-between;gap:12px}
+.laporan-meta span{color:#5c635b}
+.laporan-ringkas-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.laporan-box{padding:10px 12px;border:1px solid #cfd6cc;border-radius:10px;background:#f8faf7;display:grid;gap:2px}
+.laporan-box.utama{background:#eef3ec;border-color:#6f8f74}
+.laporan-box span{font-size:11px;color:#555c54;font-weight:600}
+.laporan-box b{font-size:17px;font-weight:800;color:#1b1d1a}
+.laporan-box small{font-size:10.5px;color:#5c635b}
+.laporan-dua-kolom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.laporan-kertas h3{margin:4px 0 6px;font:700 13.5px/1.2 var(--sans);color:#1b1d1a}
+.laporan-tabel{width:100%;border-collapse:collapse;font-size:11.5px}
+.laporan-tabel th,.laporan-tabel td{border:1px solid #d5dcd2;padding:6px 8px;text-align:left;vertical-align:top}
+.laporan-tabel th{background:#eef1ec;font-weight:700;color:#1b1d1a}
+.laporan-tabel td.num,.laporan-tabel th.num{text-align:right;white-space:nowrap}
+.laporan-tabel tfoot td{background:#f3f6f1;border-top:2px solid #1b1d1a}
+.laporan-tabel .baris-batal td{opacity:.6;text-decoration:line-through}
+.laporan-tabel .kosong-sel{text-align:center;color:#5c635b;padding:12px}
+.laporan-tabel small{color:#5c635b;font-size:10.5px}
+
+@media print{
+  body.sedang-cetak-laporan > *:not(#areaCetakLaporan){display:none!important}
+  body.sedang-cetak-laporan{background:#fff!important;color:#000!important}
+  body.sedang-cetak-laporan #areaCetakLaporan{display:block!important;width:100%;margin:0;padding:0}
+  body.sedang-cetak-laporan .laporan-kertas{gap:12px}
+  body.sedang-cetak-laporan .laporan-tabel{page-break-inside:auto}
+  body.sedang-cetak-laporan .laporan-tabel tr{page-break-inside:avoid;page-break-after:auto}
+  body.sedang-cetak-laporan .laporan-tabel thead{display:table-header-group}
+}

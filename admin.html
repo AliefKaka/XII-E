@@ -53,7 +53,15 @@
         <h1>Daftar Pesanan Masuk</h1>
         <span id="statusKoneksi" class="admin-koneksi"><i></i>Memeriksa koneksi…</span>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="admin-bar-aksi">
+        <button class="tombol-sekunder" id="btnCetakLaporan" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>
+          Cetak / PDF Laporan
+        </button>
+        <button class="tombol-sekunder" id="btnUnduhCSV" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Download Excel / CSV
+        </button>
         <button class="tombol-sekunder" id="btnSegarkan" type="button">Muat Ulang</button>
       </div>
     </div>
@@ -64,6 +72,18 @@
       <div class="stat-kartu"><span>Pesanan Baru</span><b id="statBaru">0</b></div>
       <div class="stat-kartu"><span>Selesai</span><b id="statSelesai">0</b></div>
     </div>
+
+    <!-- Pemantau Stok Produk Real-Time -->
+    <section class="admin-stok-bagian" aria-label="Stok Produk Real-Time">
+      <div class="admin-stok-kepala">
+        <div>
+          <h2>Stok Produk Real-Time</h2>
+          <small class="redup">Dihitung otomatis dari stok awal dikurangi pesanan aktif (tidak termasuk pesanan dibatalkan).</small>
+        </div>
+        <span class="redup" id="infoSinkronStok"></span>
+      </div>
+      <div class="admin-stok-grid" id="daftarStok"></div>
+    </section>
 
     <div class="saring" style="margin-bottom:18px">
       <label class="cari"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input type="search" id="cariPesanan" placeholder="Cari kode, nama pemesan, catatan, atau produk…" aria-label="Cari pesanan"></label>
@@ -83,6 +103,7 @@
 <!-- Modal Struk Admin -->
 <dialog id="strukModal" class="modal modal-struk"><div id="strukModalIsi"></div></dialog>
 <div id="areaCetakStruk" class="area-cetak" aria-hidden="true"></div>
+<div id="areaCetakLaporan" class="area-cetak-laporan" aria-hidden="true"></div>
 <div class="toast" id="toast" role="status"></div>
 
 <script src="produk.js"></script>

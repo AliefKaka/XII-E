@@ -1,4 +1,4 @@
-/* Modul Struk Digital (PDF/Print & PNG Canvas) + Bukti Transfer + Integrasi Supabase / Vercel API — proyek XII-E */
+/* Modul Struk Digital (PDF/Print & PNG Canvas) + Bukti Transfer + Stok Real-Time + Laporan Omset + Integrasi Supabase / Vercel API — proyek XII-E */
 (function (root) {
   'use strict';
 
@@ -156,6 +156,362 @@
       status: raw.status || 'Baru',
       pesan_wa: raw.pesan_wa || ''
     };
+  }
+
+  // ================= Perhitungan Stok Real-Time dari Riwayat Pesanan =================
+  function hitungTerjualPerProduk(pesananList) {
+    var byId = {};
+    var byNama = {};
+    var pendapatanById = {};
+    var pendapatanByNama = {};
+    (pesananList || []).forEach(function (raw) {
+      var p = normalisasiPesanan(raw);
+      if (String(p.status || '').toLowerCase() === 'dibatalkan') return;
+      (p.items || []).forEach(function (it) {
+        var qty = Math.max(0, Number(it.qty) || 0);
+        var nilai = qty * (Number(it.harga) || 0);
+        if (!qty) return;
+        if (it.id) {
+          var kId = String(it.id).trim();
+          byId[kId] = (byId[kId] || 0) + qty;
+          pendapatanById[kId] = (pendapatanById[kId] || 0) + nilai;
+        }
+        if (it.nama) {
+          var kNama = String(it.nama).trim().toLowerCase();
+          byNama[kNama] = (byNama[kNama] || 0) + qty;
+          pendapatanByNama[kNama] = (pendapatanByNama[kNama] || 0) + nilai;
+        }
+      });
+    });
+    return {
+      byId: byId,
+      byNama: byNama,
+      pendapatanById: pendapatanById,
+      pendapatanByNama: pendapatanByNama
+    };
+  }
+
+  function hitungRingkasanStok(produkList, pesananList) {
+    var rekap = hitungTerjualPerProduk(pesananList);
+    return (produkList || []).map(function (p) {
+      var stokAwal = p.stokAwal != null ? Number(p.stokAwal) : Number(p.stok);
+      if (isNaN(stokAwal) || stokAwal < 0) stokAwal = 0;
+      var kId = String(p.id || '').trim();
+      var kNama = String(p.nama || '').trim().toLowerCase();
+      var pakaiId = kId && rekap.byId[kId] != null;
+      var terjual = pakaiId ? rekap.byId[kId] : (rekap.byNama[kNama] || 0);
+      var pendapatan = pakaiId ? (rekap.pendapatanById[kId] || 0) : (rekap.pendapatanByNama[kNama] || 0);
+      var sisa = Math.max(0, stokAwal - terjual);
+      var status = sisa === 0 ? 'Habis' : (sisa <= 10 ? 'Menipis' : 'Tersedia');
+      return {
+        id: p.id,
+        nama: p.nama,
+        kategori: p.kategori || 'Lainnya',
+        harga: Number(p.harga) || 0,
+        stokAwal: stokAwal,
+        terjual: terjual,
+        sisa: sisa,
+        pendapatan: pendapatan,
+        status: status
+      };
+    });
+  }
+
+  function terapkanStokRealTime(produkList, pesananList) {
+    var ringkasan = hitungRingkasanStok(produkList, pesananList);
+    (produkList || []).forEach(function (p, idx) {
+      var r = ringkasan[idx];
+      if (!r) return;
+      if (p.stokAwal == null) p.stokAwal = r.stokAwal;
+      p.terjual = r.terjual;
+      p.stok = r.sisa;
+    });
+    return ringkasan;
+  }
+
+  // ================= Laporan Omset Detail (PDF/Print & CSV/Excel) =================
+  function hitungLaporanOmset(pesananList, produkList, infoFilter) {
+    var semua = (pesananList || []).map(normalisasiPesanan);
+    var aktif = semua.filter(function (p) { return String(p.status || '').toLowerCase() !== 'dibatalkan'; });
+    var batal = semua.filter(function (p) { return String(p.status || '').toLowerCase() === 'dibatalkan'; });
+
+    var totalSubtotal = 0;
+    var totalOngkir = 0;
+    var totalOmzet = 0;
+    var totalItemTerjual = 0;
+
+    var perStatus = { Baru: 0, Diproses: 0, Selesai: 0, Dibatalkan: 0 };
+    var perMetode = {};
+    var perStatusBayar = { 'Lunas': { jumlah: 0, nominal: 0 }, 'Menunggu Verifikasi': { jumlah: 0, nominal: 0 }, 'Belum Bayar': { jumlah: 0, nominal: 0 } };
+
+    semua.forEach(function (p) {
+      var st = p.status || 'Baru';
+      perStatus[st] = (perStatus[st] || 0) + 1;
+    });
+
+    aktif.forEach(function (p) {
+      totalSubtotal += Number(p.subtotal) || 0;
+      totalOngkir += Number(p.ongkir) || 0;
+      totalOmzet += Number(p.total) || 0;
+      (p.items || []).forEach(function (it) {
+        totalItemTerjual += Number(it.qty) || 0;
+      });
+      var mb = p.metode_bayar || 'Bayar di Stan';
+      if (!perMetode[mb]) perMetode[mb] = { jumlah: 0, nominal: 0 };
+      perMetode[mb].jumlah += 1;
+      perMetode[mb].nominal += Number(p.total) || 0;
+
+      var sb = p.status_bayar || 'Belum Bayar';
+      if (!perStatusBayar[sb]) perStatusBayar[sb] = { jumlah: 0, nominal: 0 };
+      perStatusBayar[sb].jumlah += 1;
+      perStatusBayar[sb].nominal += Number(p.total) || 0;
+    });
+
+    // Untuk rekap stok per produk, gunakan semuaPesanan jika diberikan agar sisa stok selalu akurat secara global
+    var sumberStok = (infoFilter && Array.isArray(infoFilter.semuaPesanan)) ? infoFilter.semuaPesanan : semua;
+    var rekapStokGlobal = hitungRingkasanStok(produkList || [], sumberStok);
+    var terjualFilter = hitungTerjualPerProduk(semua);
+    var rekapProduk = rekapStokGlobal.map(function (r) {
+      var kId = String(r.id || '').trim();
+      var kNama = String(r.nama || '').trim().toLowerCase();
+      var pakaiId = kId && terjualFilter.byId[kId] != null;
+      return {
+        id: r.id,
+        nama: r.nama,
+        kategori: r.kategori,
+        harga: r.harga,
+        stokAwal: r.stokAwal,
+        terjualLaporan: pakaiId ? terjualFilter.byId[kId] : (terjualFilter.byNama[kNama] || 0),
+        pendapatanLaporan: pakaiId ? (terjualFilter.pendapatanById[kId] || 0) : (terjualFilter.pendapatanByNama[kNama] || 0),
+        terjualTotal: r.terjual,
+        sisaStok: r.sisa,
+        statusStok: r.status
+      };
+    });
+
+    return {
+      pesanan: semua,
+      totalPesanan: semua.length,
+      pesananAktif: aktif.length,
+      pesananBatal: batal.length,
+      totalItemTerjual: totalItemTerjual,
+      totalSubtotal: totalSubtotal,
+      totalOngkir: totalOngkir,
+      totalOmzet: totalOmzet,
+      perStatus: perStatus,
+      perMetode: perMetode,
+      perStatusBayar: perStatusBayar,
+      rekapProduk: rekapProduk
+    };
+  }
+
+  function renderLaporanOmsetHTML(pesananList, produkList, toko, infoFilter) {
+    var lap = hitungLaporanOmset(pesananList, produkList, infoFilter);
+    var mu = (toko && toko.mataUang) || 'Rp';
+    var namaToko = (toko && toko.nama) || 'D SECO';
+    var alamatStan = (toko && toko.lokasi && toko.lokasi.alamat) || '';
+    var filterStatus = (infoFilter && infoFilter.status) || 'Semua';
+    var filterCari = (infoFilter && infoFilter.cari) || '';
+    var waktuCetak = formatWaktu(new Date().toISOString());
+
+    var barisMetode = Object.keys(lap.perMetode).length
+      ? Object.keys(lap.perMetode).map(function (k) {
+          var m = lap.perMetode[k];
+          return '<tr><td>' + esc(k) + '</td><td class="num">' + m.jumlah + '</td><td class="num">' + esc(rupiah(m.nominal, mu)) + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="3" class="kosong-sel">Belum ada transaksi aktif</td></tr>';
+
+    var barisBayar = Object.keys(lap.perStatusBayar).map(function (k) {
+      var b = lap.perStatusBayar[k];
+      return '<tr><td>' + esc(k) + '</td><td class="num">' + b.jumlah + '</td><td class="num">' + esc(rupiah(b.nominal, mu)) + '</td></tr>';
+    }).join('');
+
+    var barisProduk = lap.rekapProduk.length
+      ? lap.rekapProduk.map(function (r) {
+          return '<tr>' +
+            '<td><b>' + esc(r.nama) + '</b><br><small>' + esc(r.kategori) + '</small></td>' +
+            '<td class="num">' + esc(rupiah(r.harga, mu)) + '</td>' +
+            '<td class="num">' + r.stokAwal + '</td>' +
+            '<td class="num">' + r.terjualLaporan + '</td>' +
+            '<td class="num"><b>' + r.sisaStok + '</b> (' + esc(r.statusStok) + ')</td>' +
+            '<td class="num"><b>' + esc(rupiah(r.pendapatanLaporan, mu)) + '</b></td>' +
+          '</tr>';
+        }).join('')
+      : '<tr><td colspan="6" class="kosong-sel">Tidak ada data produk</td></tr>';
+
+    var barisPesanan = lap.pesanan.length
+      ? lap.pesanan.map(function (p, idx) {
+          var isBatal = String(p.status || '').toLowerCase() === 'dibatalkan';
+          var rincian = (p.items || []).map(function (it) {
+            return esc(it.qty) + 'x ' + esc(it.nama) + (it.label ? ' (' + esc(it.label) + ')' : '');
+          }).join('<br>');
+          return '<tr class="' + (isBatal ? 'baris-batal' : '') + '">' +
+            '<td class="num">' + (idx + 1) + '</td>' +
+            '<td><b>' + esc(p.kode) + '</b><br><small>' + esc(formatWaktu(p.created_at)) + '</small></td>' +
+            '<td><b>' + esc(p.nama) + '</b><br><small>' + esc(p.pengiriman) + '</small>' +
+              (p.alamat && adalahDelivery(p) ? '<br><small>' + esc(p.alamat) + '</small>' : '') +
+              (p.catatan ? '<br><small>Cat: ' + esc(p.catatan) + '</small>' : '') +
+            '</td>' +
+            '<td>' + (rincian || '-') + '</td>' +
+            '<td>' + esc(p.metode_bayar) + '<br><small>' + esc(p.status_bayar) + '</small></td>' +
+            '<td><b>' + esc(p.status) + '</b></td>' +
+            '<td class="num">' + esc(rupiah(p.subtotal, mu)) + '</td>' +
+            '<td class="num">' + (p.ongkir > 0 ? esc(rupiah(p.ongkir, mu)) : 'Rp0') + '</td>' +
+            '<td class="num"><b>' + esc(rupiah(p.total, mu)) + '</b></td>' +
+          '</tr>';
+        }).join('')
+      : '<tr><td colspan="9" class="kosong-sel">Belum ada data pesanan masuk</td></tr>';
+
+    return '<div class="laporan-kertas">' +
+      '<div class="laporan-kepala">' +
+        '<div>' +
+          '<span class="struk-lencana">LAPORAN OMSET &amp; PESANAN</span>' +
+          '<h1>' + esc(namaToko) + '</h1>' +
+          (alamatStan ? '<p>' + esc(alamatStan) + '</p>' : '') +
+        '</div>' +
+        '<div class="laporan-meta">' +
+          '<div><span>Waktu Cetak</span><b>' + esc(waktuCetak) + '</b></div>' +
+          '<div><span>Filter Status</span><b>' + esc(filterStatus) + '</b></div>' +
+          (filterCari ? '<div><span>Kata Kunci</span><b>' + esc(filterCari) + '</b></div>' : '') +
+        '</div>' +
+      '</div>' +
+
+      '<div class="laporan-ringkas-grid">' +
+        '<div class="laporan-box"><span>Total Pesanan</span><b>' + lap.totalPesanan + '</b><small>Aktif: ' + lap.pesananAktif + ' · Batal: ' + lap.pesananBatal + '</small></div>' +
+        '<div class="laporan-box"><span>Total Item Terjual</span><b>' + lap.totalItemTerjual + ' pcs</b><small>Pesanan non-batal</small></div>' +
+        '<div class="laporan-box"><span>Subtotal Produk</span><b>' + esc(rupiah(lap.totalSubtotal, mu)) + '</b><small>Ongkir: ' + esc(rupiah(lap.totalOngkir, mu)) + '</small></div>' +
+        '<div class="laporan-box utama"><span>Total Omzet Bersih</span><b>' + esc(rupiah(lap.totalOmzet, mu)) + '</b><small>Tidak termasuk dibatalkan</small></div>' +
+      '</div>' +
+
+      '<div class="laporan-dua-kolom">' +
+        '<div>' +
+          '<h3>Rincian per Metode Pembayaran</h3>' +
+          '<table class="laporan-tabel"><thead><tr><th>Metode</th><th class="num">Pesanan</th><th class="num">Omzet</th></tr></thead><tbody>' + barisMetode + '</tbody></table>' +
+        '</div>' +
+        '<div>' +
+          '<h3>Rincian Status Pembayaran</h3>' +
+          '<table class="laporan-tabel"><thead><tr><th>Status Bayar</th><th class="num">Pesanan</th><th class="num">Nominal</th></tr></thead><tbody>' + barisBayar + '</tbody></table>' +
+        '</div>' +
+      '</div>' +
+
+      '<h3>Rekap Penjualan &amp; Sisa Stok Produk</h3>' +
+      '<table class="laporan-tabel">' +
+        '<thead><tr><th>Produk</th><th class="num">Harga</th><th class="num">Stok Awal</th><th class="num">Terjual</th><th class="num">Sisa Stok</th><th class="num">Pendapatan</th></tr></thead>' +
+        '<tbody>' + barisProduk + '</tbody>' +
+      '</table>' +
+
+      '<h3>Daftar Detail Pesanan Masuk</h3>' +
+      '<table class="laporan-tabel laporan-tabel-detail">' +
+        '<thead><tr><th class="num">No</th><th>Kode &amp; Waktu</th><th>Pemesan &amp; Pengiriman</th><th>Rincian Produk</th><th>Pembayaran</th><th>Status</th><th class="num">Subtotal</th><th class="num">Ongkir</th><th class="num">Total</th></tr></thead>' +
+        '<tbody>' + barisPesanan + '</tbody>' +
+        '<tfoot><tr><td colspan="6"><b>TOTAL OMZET AKTIF (' + lap.pesananAktif + ' pesanan)</b></td><td class="num"><b>' + esc(rupiah(lap.totalSubtotal, mu)) + '</b></td><td class="num"><b>' + esc(rupiah(lap.totalOngkir, mu)) + '</b></td><td class="num"><b>' + esc(rupiah(lap.totalOmzet, mu)) + '</b></td></tr></tfoot>' +
+      '</table>' +
+    '</div>';
+  }
+
+  function cetakLaporanOmsetPDF(pesananList, produkList, toko, infoFilter) {
+    var area = document.getElementById('areaCetakLaporan');
+    if (!area) {
+      area = document.createElement('div');
+      area.id = 'areaCetakLaporan';
+      area.className = 'area-cetak-laporan';
+      document.body.appendChild(area);
+    }
+    area.innerHTML = renderLaporanOmsetHTML(pesananList, produkList, toko, infoFilter);
+    document.body.classList.add('sedang-cetak-laporan');
+    var bersihkan = function () {
+      document.body.classList.remove('sedang-cetak-laporan');
+      window.removeEventListener('afterprint', bersihkan);
+    };
+    window.addEventListener('afterprint', bersihkan);
+    setTimeout(function () {
+      window.print();
+      setTimeout(bersihkan, 1500);
+    }, 60);
+  }
+
+  function csvSel(val) {
+    var s = String(val == null ? '' : val);
+    if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function buatLaporanCSV(pesananList, produkList, toko, infoFilter) {
+    var lap = hitungLaporanOmset(pesananList, produkList, infoFilter);
+    var namaToko = (toko && toko.nama) || 'D SECO';
+    var filterStatus = (infoFilter && infoFilter.status) || 'Semua';
+    var filterCari = (infoFilter && infoFilter.cari) || '';
+    var baris = [];
+
+    baris.push(['LAPORAN OMSET & DATA PESANAN MASUK', namaToko]);
+    baris.push(['Waktu Unduh', formatWaktu(new Date().toISOString())]);
+    baris.push(['Filter Status', filterStatus]);
+    if (filterCari) baris.push(['Kata Kunci', filterCari]);
+    baris.push([]);
+
+    baris.push(['RINGKASAN OMSET']);
+    baris.push(['Total Pesanan', lap.totalPesanan]);
+    baris.push(['Pesanan Aktif (Non-Batal)', lap.pesananAktif]);
+    baris.push(['Pesanan Dibatalkan', lap.pesananBatal]);
+    baris.push(['Total Item Terjual', lap.totalItemTerjual]);
+    baris.push(['Total Subtotal Produk (Rp)', lap.totalSubtotal]);
+    baris.push(['Total Ongkir (Rp)', lap.totalOngkir]);
+    baris.push(['Total Omzet Bersih (Rp)', lap.totalOmzet]);
+    baris.push([]);
+
+    baris.push(['REKAP PENJUALAN & SISA STOK PRODUK']);
+    baris.push(['ID Produk', 'Nama Produk', 'Kategori', 'Harga Satuan', 'Stok Awal', 'Terjual (Sesuai Filter)', 'Total Terjual Global', 'Sisa Stok', 'Status Stok', 'Pendapatan (Rp)']);
+    lap.rekapProduk.forEach(function (r) {
+      baris.push([r.id, r.nama, r.kategori, r.harga, r.stokAwal, r.terjualLaporan, r.terjualTotal, r.sisaStok, r.statusStok, r.pendapatanLaporan]);
+    });
+    baris.push([]);
+
+    baris.push(['DAFTAR DETAIL PESANAN MASUK']);
+    baris.push(['No', 'Kode Pesanan', 'Waktu', 'Nama Pemesan', 'Pengiriman', 'Alamat', 'Metode Pembayaran', 'Status Pembayaran', 'Status Pesanan', 'Rincian Produk', 'Total Qty', 'Subtotal (Rp)', 'Ongkir (Rp)', 'Total Bayar (Rp)', 'Catatan']);
+    lap.pesanan.forEach(function (p, idx) {
+      var rincian = (p.items || []).map(function (it) {
+        return (it.qty || 1) + 'x ' + it.nama + (it.label ? ' (' + it.label + ')' : '') + ' @' + (it.harga || 0);
+      }).join(' | ');
+      var qtyTot = (p.items || []).reduce(function (s, it) { return s + (Number(it.qty) || 0); }, 0);
+      baris.push([
+        idx + 1,
+        p.kode,
+        formatWaktu(p.created_at),
+        p.nama,
+        p.pengiriman,
+        p.alamat,
+        p.metode_bayar,
+        p.status_bayar,
+        p.status,
+        rincian,
+        qtyTot,
+        p.subtotal,
+        p.ongkir,
+        p.total,
+        p.catatan
+      ]);
+    });
+
+    return '\uFEFF' + baris.map(function (r) { return r.map(csvSel).join(','); }).join('\r\n');
+  }
+
+  function unduhLaporanCSV(pesananList, produkList, toko, infoFilter) {
+    var csv = buatLaporanCSV(pesananList, produkList, toko, infoFilter);
+    var d = new Date();
+    var pad = function (x) { return String(x).padStart(2, '0'); };
+    var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes());
+    var slug = String((toko && toko.nama) || 'toko').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    var namaFile = 'laporan-omset-' + slug + '-' + stamp + '.csv';
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = namaFile;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+    return namaFile;
   }
 
   function simpanPesanan(pesanan, toko) {
@@ -728,6 +1084,14 @@
     ubahStatusBayar: ubahStatusBayar,
     hapusPesanan: hapusPesanan,
     normalisasiPesanan: normalisasiPesanan,
+    hitungTerjualPerProduk: hitungTerjualPerProduk,
+    hitungRingkasanStok: hitungRingkasanStok,
+    terapkanStokRealTime: terapkanStokRealTime,
+    hitungLaporanOmset: hitungLaporanOmset,
+    renderLaporanOmsetHTML: renderLaporanOmsetHTML,
+    cetakLaporanOmsetPDF: cetakLaporanOmsetPDF,
+    buatLaporanCSV: buatLaporanCSV,
+    unduhLaporanCSV: unduhLaporanCSV,
     kompresGambar: kompresGambar,
     dataUrlKeFile: dataUrlKeFile,
     renderStrukHTML: renderStrukHTML,

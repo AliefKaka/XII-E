@@ -3,8 +3,12 @@
   'use strict';
 
   var TOKO = root.TOKO || { nama: 'D SECO', mataUang: 'Rp', admin: { username: 'admin', pin: '362008' } };
+  var PRODUK = root.PRODUK || [];
   var StrukKit = root.StrukKit;
   var KUNCI_SESI = 'katalog-admin-sesi';
+  var INTERVAL_SYNC_MS = 15000;
+  var timerSinkron = null;
+  var sedangMuat = false;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -12,6 +16,11 @@
     });
   }
   function rp(n) { return (TOKO.mataUang || 'Rp') + Math.round(n || 0).toLocaleString('id-ID'); }
+
+  // Simpan stok awal dari produk.js agar sinkronisasi selalu akurat
+  PRODUK.forEach(function (p) {
+    if (p.stokAwal == null) p.stokAwal = Number(p.stok) || 0;
+  });
 
   var tt;
   function toast(m) {
@@ -37,19 +46,37 @@
     try { if (v) sessionStorage.setItem(KUNCI_SESI, '1'); else sessionStorage.removeItem(KUNCI_SESI); } catch (e) {}
   }
 
+  function aturPolling(aktif) {
+    if (timerSinkron) {
+      clearInterval(timerSinkron);
+      timerSinkron = null;
+    }
+    if (aktif) {
+      timerSinkron = setInterval(function () {
+        if (!document.hidden && sudahMasuk()) muatPesanan(true);
+      }, INTERVAL_SYNC_MS);
+    }
+  }
+
   function tampilkanTampilan() {
     var masuk = sudahMasuk();
     $('#adminLogin').hidden = masuk;
     $('#adminPanel').hidden = !masuk;
     $('#btnKeluar').hidden = !masuk;
-    if (masuk) muatPesanan();
+    aturPolling(masuk);
+    if (masuk) muatPesanan(false);
   }
 
-  function muatPesanan() {
+  function muatPesanan(diam) {
+    if (sedangMuat) return;
+    sedangMuat = true;
     var badge = $('#statusKoneksi');
     var wadah = $('#daftarPesanan');
-    wadah.innerHTML = '<div class="kosong"><b>Memuat data pesanan…</b></div>';
+    if (!diam) {
+      wadah.innerHTML = '<div class="kosong"><b>Memuat data pesanan…</b></div>';
+    }
     StrukKit.ambilSemuaPesanan(TOKO).then(function (res) {
+      sedangMuat = false;
       semuaPesanan = (res && res.data) || [];
       if (res.mode === 'supabase' && res.ok) {
         badge.className = 'admin-koneksi';
@@ -62,7 +89,10 @@
         badge.innerHTML = '<i></i>Mode Lokal — isi URL &amp; Anon Key Supabase di produk.js agar sinkron antar perangkat';
       }
       renderStatistik();
+      renderStok();
       renderDaftar();
+    }).catch(function () {
+      sedangMuat = false;
     });
   }
 
@@ -77,20 +107,56 @@
     $('#statSelesai').textContent = selesai;
   }
 
-  function renderDaftar() {
+  function renderStok() {
+    var wadah = $('#daftarStok');
+    if (!wadah || !StrukKit || !StrukKit.terapkanStokRealTime) return;
+    var ringkasan = StrukKit.terapkanStokRealTime(PRODUK, semuaPesanan);
+    var info = $('#infoSinkronStok');
+    if (info) {
+      info.textContent = 'Diperbarui ' + StrukKit.formatWaktu(new Date().toISOString());
+    }
+    if (!ringkasan.length) {
+      wadah.innerHTML = '<div class="kosong"><b>Belum ada produk terdaftar</b></div>';
+      return;
+    }
+    wadah.innerHTML = ringkasan.map(function (r) {
+      var cls = r.sisa === 0 ? 'habis' : (r.sisa <= 10 ? 'menipis' : 'tersedia');
+      var persen = r.stokAwal > 0 ? Math.min(100, Math.round((r.sisa / r.stokAwal) * 100)) : 0;
+      return '<div class="stok-kartu-admin">' +
+        '<div class="stok-kartu-atas">' +
+          '<div><b>' + esc(r.nama) + '</b><small class="redup">' + esc(r.kategori) + ' · ' + esc(rp(r.harga)) + '</small></div>' +
+          '<span class="stok-lencana ' + cls + '">' + esc(r.status) + '</span>' +
+        '</div>' +
+        '<div class="stok-bar"><span class="stok-bar-isi ' + cls + '" style="width:' + persen + '%"></span></div>' +
+        '<div class="stok-angka">' +
+          '<span>Awal: <b>' + r.stokAwal + '</b></span>' +
+          '<span>Terjual: <b>' + r.terjual + '</b></span>' +
+          '<span>Sisa: <b>' + r.sisa + '</b></span>' +
+        '</div>' +
+        '<div class="stok-omzet redup">Omzet produk: <b>' + esc(rp(r.pendapatan)) + '</b></div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function daftarTersaring() {
     var q = ($('#cariPesanan').value || '').trim().toLowerCase();
     var st = $('#filterStatus').value || 'Semua';
-    var list = semuaPesanan.filter(function (p) {
+    return semuaPesanan.filter(function (p) {
       var cocokStatus = st === 'Semua' || (p.status || 'Baru') === st;
       if (!cocokStatus) return false;
       if (!q) return true;
       var teksItem = (p.items || []).map(function (i) { return i.nama + ' ' + (i.label || ''); }).join(' ');
       return (p.kode + ' ' + p.nama + ' ' + (p.catatan || '') + ' ' + (p.pengiriman || '') + ' ' + (p.alamat || '') + ' ' + (p.metode_bayar || '') + ' ' + teksItem).toLowerCase().indexOf(q) > -1;
     });
+  }
+
+  function renderDaftar() {
+    var list = daftarTersaring();
 
     var wadah = $('#daftarPesanan');
     if (!list.length) {
       wadah.innerHTML = '<div class="kosong"><b>Belum ada pesanan yang cocok</b><span>Pesanan yang masuk dari pembeli akan muncul otomatis di sini.</span></div>';
+      wadah._tampil = [];
       return;
     }
 
@@ -238,9 +304,39 @@
     tampilkanTampilan();
   };
 
-  $('#btnSegarkan').onclick = muatPesanan;
+  $('#btnSegarkan').onclick = function () { muatPesanan(false); };
   $('#cariPesanan').oninput = renderDaftar;
   $('#filterStatus').onchange = renderDaftar;
+
+  if ($('#btnCetakLaporan')) {
+    $('#btnCetakLaporan').onclick = function () {
+      var list = daftarTersaring();
+      StrukKit.cetakLaporanOmsetPDF(list, PRODUK, TOKO, {
+        status: $('#filterStatus').value || 'Semua',
+        cari: ($('#cariPesanan').value || '').trim(),
+        semuaPesanan: semuaPesanan
+      });
+    };
+  }
+
+  if ($('#btnUnduhCSV')) {
+    $('#btnUnduhCSV').onclick = function () {
+      var list = daftarTersaring();
+      var namaFile = StrukKit.unduhLaporanCSV(list, PRODUK, TOKO, {
+        status: $('#filterStatus').value || 'Semua',
+        cari: ($('#cariPesanan').value || '').trim(),
+        semuaPesanan: semuaPesanan
+      });
+      toast('Laporan diunduh: ' + namaFile);
+    };
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && sudahMasuk()) muatPesanan(true);
+  });
+  window.addEventListener('focus', function () {
+    if (sudahMasuk()) muatPesanan(true);
+  });
 
   $('#daftarPesanan').addEventListener('change', function (e) {
     var selStatus = e.target.closest('.ubah-status');
@@ -251,6 +347,7 @@
           if (String(x.id) === id || x.kode === id) x.status = statusBaru;
         });
         renderStatistik();
+        renderStok();
         renderDaftar();
         toast(res.ok ? 'Status diperbarui menjadi ' + statusBaru : 'Status diperbarui lokal (cek Supabase)');
       });
@@ -284,6 +381,7 @@
       StrukKit.hapusPesanan(id, TOKO).then(function (res) {
         semuaPesanan = semuaPesanan.filter(function (x) { return String(x.id) !== id && x.kode !== id; });
         renderStatistik();
+        renderStok();
         renderDaftar();
         toast(res.ok ? 'Pesanan dihapus' : 'Pesanan dihapus lokal (cek Supabase)');
       });
