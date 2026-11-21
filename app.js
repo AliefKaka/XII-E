@@ -280,8 +280,7 @@
     return root.StrukKit.ambilSemuaPesanan(TOKO).then(function (res) {
       sedangSinkronStok = false;
       var daftar = (res && Array.isArray(res.data)) ? res.data : [];
-      var restok = (res && Array.isArray(res.restok)) ? res.restok : [];
-      root.StrukKit.terapkanStokRealTime(PRODUK, daftar, restok);
+      root.StrukKit.terapkanStokRealTime(PRODUK, daftar);
       var hasilCek = validasiKeranjangTerhadapStok(diam);
       perbaruiJumlahProdukTersedia();
       renderSorotan();
@@ -855,8 +854,7 @@
     var cekStokTerbaru = (root.StrukKit && root.StrukKit.ambilSemuaPesanan && root.StrukKit.terapkanStokRealTime)
       ? root.StrukKit.ambilSemuaPesanan(TOKO).then(function (res) {
           var daftar = (res && Array.isArray(res.data)) ? res.data : [];
-          var restok = (res && Array.isArray(res.restok)) ? res.restok : [];
-          root.StrukKit.terapkanStokRealTime(PRODUK, daftar, restok);
+          root.StrukKit.terapkanStokRealTime(PRODUK, daftar);
           perbaruiJumlahProdukTersedia();
           renderSorotan();
           renderGrid();

@@ -6,9 +6,11 @@
   var PRODUK = root.PRODUK || [];
   var StrukKit = root.StrukKit;
   var KUNCI_SESI = 'katalog-admin-sesi';
+  var KUNCI_KRED = 'katalog-admin-kred';
   var INTERVAL_SYNC_MS = 15000;
   var timerSinkron = null;
   var sedangMuat = false;
+  var sedangRestok = false;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -17,7 +19,7 @@
   }
   function rp(n) { return (TOKO.mataUang || 'Rp') + Math.round(n || 0).toLocaleString('id-ID'); }
 
-  // Simpan stok awal dari produk.js agar sinkronisasi selalu akurat
+  // Simpan stok dasar dari produk.js
   PRODUK.forEach(function (p) {
     if (p.stokAwal == null) p.stokAwal = Number(p.stok) || 0;
   });
@@ -26,7 +28,7 @@
   function toast(m) {
     var t = $('#toast'); if (!t) return;
     t.textContent = m; t.classList.add('tampil');
-    clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 2800);
+    clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('tampil'); }, 3600);
   }
 
   function pasangLogo() {
@@ -38,13 +40,27 @@
   }
 
   var semuaPesanan = [];
-  var semuaRestok = [];
 
   function sudahMasuk() {
     try { return sessionStorage.getItem(KUNCI_SESI) === '1'; } catch (e) { return false; }
   }
-  function setMasuk(v) {
-    try { if (v) sessionStorage.setItem(KUNCI_SESI, '1'); else sessionStorage.removeItem(KUNCI_SESI); } catch (e) {}
+  function setMasuk(v, kred) {
+    try {
+      if (v) {
+        sessionStorage.setItem(KUNCI_SESI, '1');
+        if (kred) sessionStorage.setItem(KUNCI_KRED, JSON.stringify(kred));
+      } else {
+        sessionStorage.removeItem(KUNCI_SESI);
+        sessionStorage.removeItem(KUNCI_KRED);
+      }
+    } catch (e) {}
+  }
+  function ambilKredensial() {
+    try {
+      var raw = sessionStorage.getItem(KUNCI_KRED);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return TOKO.admin || { username: 'admin', pin: '' };
   }
 
   function aturPolling(aktif) {
@@ -79,7 +95,6 @@
     StrukKit.ambilSemuaPesanan(TOKO).then(function (res) {
       sedangMuat = false;
       semuaPesanan = (res && res.data) || [];
-      semuaRestok = (res && res.restok) || [];
       if (res.mode === 'supabase' && res.ok) {
         badge.className = 'admin-koneksi';
         badge.innerHTML = '<i></i>Terhubung ke Supabase (Real-time)';
@@ -116,7 +131,7 @@
   function renderStok() {
     var wadah = $('#daftarStok');
     if (!wadah || !StrukKit || !StrukKit.terapkanStokRealTime) return;
-    var ringkasan = StrukKit.terapkanStokRealTime(PRODUK, semuaPesanan, semuaRestok);
+    var ringkasan = StrukKit.terapkanStokRealTime(PRODUK, semuaPesanan);
     var info = $('#infoSinkronStok');
     if (info) {
       info.textContent = 'Diperbarui ' + StrukKit.formatWaktu(new Date().toISOString());
@@ -127,9 +142,7 @@
     }
     wadah.innerHTML = ringkasan.map(function (r) {
       var cls = r.sisa === 0 ? 'habis' : (r.sisa <= 10 ? 'menipis' : 'tersedia');
-      var basisBar = Math.max(1, r.stokTotal || r.stokAwal || 1);
-      var persen = Math.min(100, Math.round((r.sisa / basisBar) * 100));
-      var restokLabel = r.restokAdmin > 0 ? ('+' + r.restokAdmin) : String(r.restokAdmin || 0);
+      var persen = r.stokAwal > 0 ? Math.min(100, Math.round((r.sisa / r.stokAwal) * 100)) : 0;
       return '<div class="stok-kartu-admin" data-produk-id="' + esc(r.id) + '">' +
         '<div class="stok-kartu-atas">' +
           '<div><b>' + esc(r.nama) + '</b><small class="redup">' + esc(r.kategori) + ' · ' + esc(rp(r.harga)) + '</small></div>' +
@@ -137,8 +150,7 @@
         '</div>' +
         '<div class="stok-bar"><span class="stok-bar-isi ' + cls + '" style="width:' + persen + '%"></span></div>' +
         '<div class="stok-angka">' +
-          '<span title="Stok dasar di produk.js">produk.js: <b>' + r.stokAwal + '</b></span>' +
-          '<span title="Tambahan restok dari panel admin">Restok: <b>' + esc(restokLabel) + '</b></span>' +
+          '<span title="Nilai stok di produk.js">Stok: <b>' + r.stokAwal + '</b></span>' +
           '<span>Terjual: <b>' + r.terjual + '</b></span>' +
           '<span>Sisa: <b>' + r.sisa + '</b></span>' +
         '</div>' +
@@ -148,18 +160,31 @@
             '<button type="button" class="restok-chip" data-restok-cepat="5" data-pid="' + esc(r.id) + '">+5</button>' +
             '<button type="button" class="restok-chip" data-restok-cepat="10" data-pid="' + esc(r.id) + '">+10</button>' +
             '<button type="button" class="restok-chip" data-restok-cepat="20" data-pid="' + esc(r.id) + '">+20</button>' +
-            (r.restokAdmin !== 0 ? '<button type="button" class="restok-chip reset" data-restok-reset="' + esc(r.id) + '" title="Hapus semua restok admin untuk produk ini">Reset</button>' : '') +
           '</div>' +
           '<form class="stok-restok-form" data-pid="' + esc(r.id) + '">' +
-            '<input type="number" name="jumlah" step="1" placeholder="± jumlah" aria-label="Jumlah restok ' + esc(r.nama) + '" required>' +
-            '<button type="submit" class="restok-submit">Restok</button>' +
+            '<input type="number" name="jumlah" step="1" placeholder="± restok" aria-label="Jumlah restok ' + esc(r.nama) + '" required>' +
+            '<button type="submit" class="restok-submit">Simpan ke produk.js</button>' +
           '</form>' +
         '</div>' +
       '</div>';
     }).join('');
   }
 
+  function aturStatusTombolRestok(produkId, nonaktif) {
+    var kartu = $('#daftarStok') && $('#daftarStok').querySelector('[data-produk-id="' + produkId + '"]');
+    if (!kartu) return;
+    Array.prototype.forEach.call(kartu.querySelectorAll('button, input'), function (el) {
+      el.disabled = !!nonaktif;
+    });
+    var btnSub = kartu.querySelector('.restok-submit');
+    if (btnSub) btnSub.textContent = nonaktif ? 'Menyimpan…' : 'Simpan ke produk.js';
+  }
+
   function jalankanRestok(produkId, jumlah) {
+    if (sedangRestok) {
+      toast('Tunggu proses restok sebelumnya selesai…');
+      return;
+    }
     var p = cariProduk(produkId);
     var qty = Math.round(Number(jumlah) || 0);
     if (!p) return;
@@ -167,13 +192,22 @@
       toast('Masukkan jumlah restok (contoh: 10 atau -5)');
       return;
     }
-    StrukKit.simpanRestok(p, qty, '', TOKO).then(function (res) {
-      if (res && res.data) {
-        semuaRestok.unshift(StrukKit.normalisasiPesanan(res.data));
+    sedangRestok = true;
+    aturStatusTombolRestok(produkId, true);
+    StrukKit.restokKeProdukJS(p, { tambah: qty }, ambilKredensial(), TOKO).then(function (res) {
+      sedangRestok = false;
+      aturStatusTombolRestok(produkId, false);
+      if (res && res.ok) {
+        p.stokAwal = res.stokBaru;
+        renderStok();
+        toast('produk.js diperbarui: ' + p.nama + ' (' + res.stokLama + ' → ' + res.stokBaru + '). Vercel sedang deploy otomatis.');
+      } else {
+        toast('Gagal restok ke produk.js: ' + ((res && res.error) || 'Periksa pengaturan GITHUB_TOKEN di Vercel'));
       }
-      renderStok();
-      var tanda = qty > 0 ? ('+' + qty) : String(qty);
-      toast((res && res.ok ? 'Restok tersimpan: ' : 'Restok disimpan lokal: ') + p.nama + ' (' + tanda + ') · Sisa ' + p.stok);
+    }).catch(function () {
+      sedangRestok = false;
+      aturStatusTombolRestok(produkId, false);
+      toast('Terjadi kesalahan saat menyimpan ke produk.js');
     });
   }
 
@@ -330,7 +364,7 @@
     if (u === String(kred.username) && p === String(kred.pin)) {
       galat.hidden = true;
       e.target.reset();
-      setMasuk(true);
+      setMasuk(true, { username: u, pin: p });
       tampilkanTampilan();
     } else {
       galat.textContent = 'Username atau PIN salah. Silakan coba lagi.';
@@ -352,20 +386,6 @@
       var btnCepat = e.target.closest('[data-restok-cepat]');
       if (btnCepat) {
         jalankanRestok(btnCepat.dataset.pid, +btnCepat.dataset.restokCepat);
-        return;
-      }
-      var btnReset = e.target.closest('[data-restok-reset]');
-      if (btnReset) {
-        var pid = btnReset.dataset.restokReset;
-        var prod = cariProduk(pid);
-        if (!confirm('Reset semua tambahan restok admin untuk ' + (prod ? prod.nama : pid) + '? Stok akan kembali mengikuti produk.js dikurangi pesanan aktif.')) return;
-        StrukKit.resetRestokProduk(pid, semuaRestok, TOKO).then(function (res) {
-          semuaRestok = semuaRestok.filter(function (r) {
-            return !(r.items || []).some(function (it) { return String(it.id || '').trim() === String(pid).trim(); });
-          });
-          renderStok();
-          toast(res && res.ok ? 'Restok admin direset' : 'Restok admin direset lokal (cek Supabase)');
-        });
       }
     });
 
@@ -390,8 +410,7 @@
       StrukKit.cetakLaporanOmsetPDF(list, PRODUK, TOKO, {
         status: $('#filterStatus').value || 'Semua',
         cari: ($('#cariPesanan').value || '').trim(),
-        semuaPesanan: semuaPesanan,
-        semuaRestok: semuaRestok
+        semuaPesanan: semuaPesanan
       });
     };
   }
@@ -402,8 +421,7 @@
       var namaFile = StrukKit.unduhLaporanCSV(list, PRODUK, TOKO, {
         status: $('#filterStatus').value || 'Semua',
         cari: ($('#cariPesanan').value || '').trim(),
-        semuaPesanan: semuaPesanan,
-        semuaRestok: semuaRestok
+        semuaPesanan: semuaPesanan
       });
       toast('Laporan diunduh: ' + namaFile);
     };
