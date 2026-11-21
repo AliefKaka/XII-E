@@ -201,6 +201,66 @@
 
   function cari(id) { return PRODUK.find(function (p) { return p.id === id; }); }
 
+  var metodeBayarPilihan = 'qris';
+
+  function pastikanUIMetodeBayar() {
+    var blokQris = $('#blokQris');
+    if (!blokQris || !blokQris.parentNode) return;
+    if (!$('#labelMetodeBayar')) {
+      var wrap = document.createElement('div');
+      wrap.className = 'blok-metode-bayar';
+      wrap.id = 'labelMetodeBayar';
+      wrap.hidden = true;
+      wrap.innerHTML =
+        '<span class="metode-judul">Metode Pembayaran (Delivery)</span>' +
+        '<div class="metode-opsi" role="radiogroup" aria-label="Metode Pembayaran">' +
+          '<button type="button" class="metode-btn aktif" data-metode="qris" aria-pressed="true">Transfer QRIS</button>' +
+          '<button type="button" class="metode-btn" data-metode="cod" aria-pressed="false">COD (Bayar di Tempat)</button>' +
+        '</div>' +
+        '<select name="metodeBayar" id="pilihMetodeBayar" aria-label="Metode Pembayaran" hidden>' +
+          '<option value="qris">Transfer QRIS DANA (Upload Bukti)</option>' +
+          '<option value="cod">COD (Bayar di Tempat)</option>' +
+        '</select>';
+      blokQris.parentNode.insertBefore(wrap, blokQris);
+    }
+    if (!$('#blokCod')) {
+      var cod = document.createElement('div');
+      cod.className = 'blok-cod';
+      cod.id = 'blokCod';
+      cod.hidden = true;
+      cod.innerHTML =
+        '<div class="qris-kepala"><span class="qris-lencana">COD · Bayar di Tempat</span><strong id="codNominal">Rp0</strong></div>' +
+        '<p class="qris-info">Pembayaran dilakukan secara tunai saat pesanan diantar ke alamat tujuan. Tidak perlu mengunggah bukti transfer.</p>';
+      blokQris.parentNode.insertBefore(cod, blokQris);
+    }
+    var kontainer = $('#labelMetodeBayar');
+    if (kontainer && !kontainer.dataset.terikat) {
+      kontainer.dataset.terikat = '1';
+      kontainer.addEventListener('click', function (e) {
+        var btn = e.target.closest('.metode-btn');
+        if (!btn) return;
+        setMetodeBayar(btn.dataset.metode);
+      });
+    }
+    var sel = $('#pilihMetodeBayar');
+    if (sel && !sel.dataset.terikat) {
+      sel.dataset.terikat = '1';
+      sel.onchange = function () { setMetodeBayar(this.value); };
+    }
+  }
+
+  function setMetodeBayar(val) {
+    metodeBayarPilihan = val === 'cod' ? 'cod' : 'qris';
+    var sel = $('#pilihMetodeBayar');
+    if (sel) sel.value = metodeBayarPilihan;
+    $$('#labelMetodeBayar .metode-btn').forEach(function (b) {
+      var aktif = b.dataset.metode === metodeBayarPilihan;
+      b.classList.toggle('aktif', aktif);
+      b.setAttribute('aria-pressed', String(aktif));
+    });
+    perbaruiModePengiriman();
+  }
+
   function pengirimanAktifId() {
     var sel = $('#pilihPengiriman');
     return (sel && sel.value) || 'takeaway';
@@ -208,7 +268,8 @@
 
   function metodeBayarAktif() {
     var sel = $('#pilihMetodeBayar');
-    return (sel && sel.value === 'cod') ? 'cod' : 'qris';
+    if (sel && (sel.value === 'cod' || sel.value === 'qris')) return sel.value;
+    return metodeBayarPilihan === 'cod' ? 'cod' : 'qris';
   }
 
   function renderOpsiPengiriman() {
@@ -222,6 +283,7 @@
   }
 
   function perbaruiModePengiriman() {
+    pastikanUIMetodeBayar();
     var id = pengirimanAktifId();
     var opsi = cariPengiriman(id, TOKO);
     var delivery = !!opsi.delivery;
@@ -525,10 +587,8 @@
       var adaOpsi = daftarPengiriman(TOKO).some(function (o) { return o.id === pb.pengirimanId; });
       if (adaOpsi) $('#pilihPengiriman').value = pb.pengirimanId;
     }
-    if ((pb.metodeBayar === 'qris' || pb.metodeBayar === 'cod') && $('#pilihMetodeBayar')) {
-      $('#pilihMetodeBayar').value = pb.metodeBayar;
-    }
-    perbaruiModePengiriman();
+    pastikanUIMetodeBayar();
+    setMetodeBayar(pb.metodeBayar === 'cod' ? 'cod' : 'qris');
 
     var unggul = PRODUK.filter(function (p) { return p.label && p.stok !== 0; })[0] || PRODUK[0];
     if (unggul) {
@@ -557,11 +617,6 @@
 
   if ($('#pilihPengiriman')) {
     $('#pilihPengiriman').onchange = function () {
-      perbaruiModePengiriman();
-    };
-  }
-  if ($('#pilihMetodeBayar')) {
-    $('#pilihMetodeBayar').onchange = function () {
       perbaruiModePengiriman();
     };
   }
