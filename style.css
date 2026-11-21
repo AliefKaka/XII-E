@@ -388,7 +388,7 @@ html.mode-pilih [data-pilih-hover]{outline:2px solid #f43f5e!important;outline-o
 .laci label textarea{resize:vertical;min-height:64px;line-height:1.45}
 .alamat-terkunci{opacity:.78;cursor:not-allowed;background:color-mix(in srgb,var(--latar) 85%,var(--kartu))!important;border-style:dashed!important}
 .gratis-tag{color:var(--wa);font-weight:800}
-.blok-qris{margin-top:12px;padding:14px;border-radius:var(--radius);background:var(--kartu);border:1px solid var(--garis-kuat);display:grid;gap:10px}
+.blok-qris,.blok-cod{margin-top:12px;padding:14px;border-radius:var(--radius);background:var(--kartu);border:1px solid var(--garis-kuat);display:grid;gap:10px}
 .qris-kepala{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .qris-lencana{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:var(--aksen2-muda);color:var(--aksen2-teks);font-size:12px;font-weight:800;letter-spacing:.02em}
 .qris-kepala strong{font-size:17px;font-weight:800}
