@@ -23,7 +23,7 @@ window.TOKO = {
     minGratisOngkir: 4,
     opsi: [
       { id: 'takeaway', label: 'Takeaway (Ambil di Stan)', ongkir: 0, delivery: false },
-      { id: 'lumajang-kota', label: 'Delivery — Lumajang Kota', ongkir: 3000, delivery: true },
+      { id: 'lumajang-kota', label: 'Delivery — Lumajang Kota', ongkir: 0, delivery: true },
       { id: 'lain', label: 'Delivery — Lainnya', ongkir: 5000, delivery: true }
     ]
   },
@@ -60,13 +60,13 @@ window.TOKO = {
    { bentuk: 'kaos'|'tote'|'mug'|'topi'|'botol'|'buku'|'lilin'|'tas'|'tatakan', warna: '#hex', aksen: '#hex' }. */
 window.PRODUK = [
   {
-    id: 'dorayaki-lezat', nama: 'dorayaki', kategori: 'Makanan', harga: 3500, label: 'Terlaris', stok: 50,
+    id: 'dorayaki-lezat', nama: 'dorayaki', kategori: 'Makanan', harga: 3500, label: 'Terlaris', stok: 80,
     deskripsi: 'Dorayaki kue khas Jepang bertekstur lembut dengan isian manis yang lezat, cocok dinikmati sebagai camilan kapan saja',
     varian: [],
     gambar: ['img/dorayaki.jpg']
   },
   {
-    id: 'sempol-gurih', nama: 'Sempol', kategori: 'Makanan', harga: 5000, stok: 50,
+    id: 'sempol-gurih', nama: 'Sempol', kategori: 'Makanan', harga: 5000, stok: 75,
     deskripsi: 'Sempol jajanan gurih berbahan dasar ayam dan tepung yang digoreng hingga renyah di luar, lembut di dalam, dan nikmat di setiap gigitan.',
     varian: [],
     gambar: ['img/sempol.jpg']
