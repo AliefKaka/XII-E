@@ -449,6 +449,28 @@
     var img = $('#buktiPreviewImg'); if (img) img.removeAttribute('src');
   }
 
+  function resetFormPembeli() {
+    alamatDeliverySimpan = '';
+    var f = $('#formPesan');
+    if (f) {
+      if (f.elements.nama) f.elements.nama.value = '';
+      if (f.elements.catatan) f.elements.catatan.value = '';
+    }
+    var selPengiriman = $('#pilihPengiriman');
+    var opsi = daftarPengiriman(TOKO);
+    if (selPengiriman && opsi.length) {
+      selPengiriman.value = opsi[0].id;
+    }
+    var inpAlamat = $('#inputAlamat');
+    if (inpAlamat) {
+      inpAlamat.value = '';
+      inpAlamat.readOnly = false;
+    }
+    resetBukti();
+    setMetodeBayar('qris');
+    try { localStorage.removeItem('katalog-pembeli'); } catch (e) {}
+  }
+
   function renderKategori() {
     var kats = ['Semua'];
     PRODUK.forEach(function (p) { if (kats.indexOf(p.kategori) < 0) kats.push(p.kategori); });
@@ -727,15 +749,8 @@
       minGratisEl.textContent = TOKO.pengiriman.minGratisOngkir;
     }
     renderOpsiPengiriman();
-    var pb = simpanan.get('katalog-pembeli', {}); var f = $('#formPesan');
-    ['nama', 'catatan'].forEach(function (k) { if (pb[k] != null && f.elements[k]) f.elements[k].value = pb[k]; });
-    alamatDeliverySimpan = pb.alamatDelivery || '';
-    if (pb.pengirimanId && $('#pilihPengiriman')) {
-      var adaOpsi = daftarPengiriman(TOKO).some(function (o) { return o.id === pb.pengirimanId; });
-      if (adaOpsi) $('#pilihPengiriman').value = pb.pengirimanId;
-    }
     pastikanUIMetodeBayar();
-    setMetodeBayar(pb.metodeBayar === 'cod' ? 'cod' : 'qris');
+    resetFormPembeli();
 
     perbaruiJumlahProdukTersedia();
     renderSorotan();
@@ -882,13 +897,7 @@
         alamat: t.delivery ? alamatInput : ((TOKO.lokasi && TOKO.lokasi.alamat) || ''),
         alamatDelivery: alamatDeliverySimpan
       };
-      simpanan.set('katalog-pembeli', {
-        nama: pb.nama,
-        catatan: pb.catatan,
-        pengirimanId: pb.pengirimanId,
-        metodeBayar: pb.metodeBayar,
-        alamatDelivery: pb.alamatDelivery
-      });
+      try { localStorage.removeItem('katalog-pembeli'); } catch (errSimpan) {}
 
       var itemsSalin = keranjang.map(function (i) {
         return { id: i.id, nama: i.nama, label: i.label || '', harga: i.harga, qty: i.qty };
@@ -921,7 +930,7 @@
       proses.then(function (hasil) {
         btn.innerHTML = labelAsli;
         keranjang = [];
-        resetBukti();
+        resetFormPembeli();
         simpan();
         bukaLaci(false);
         bukaStruk(pesanan, hasil, fileBuktiKirim);

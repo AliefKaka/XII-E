@@ -85,14 +85,20 @@
       <div class="admin-stok-grid" id="daftarStok"></div>
     </section>
 
-    <div class="saring" style="margin-bottom:18px">
+    <div class="saring saring-admin" style="margin-bottom:18px">
       <label class="cari"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input type="search" id="cariPesanan" placeholder="Cari kode, nama pemesan, catatan, atau produk…" aria-label="Cari pesanan"></label>
-      <select id="filterStatus" aria-label="Filter status">
+      <select id="filterStatus" aria-label="Filter status pesanan">
         <option value="Semua">Semua status</option>
         <option value="Baru">Baru</option>
         <option value="Diproses">Diproses</option>
         <option value="Selesai">Selesai</option>
         <option value="Dibatalkan">Dibatalkan</option>
+      </select>
+      <select id="filterBayar" aria-label="Filter status pembayaran">
+        <option value="Semua">Semua pembayaran</option>
+        <option value="Lunas">Lunas</option>
+        <option value="Menunggu Verifikasi">Menunggu Verifikasi</option>
+        <option value="Belum Bayar">Belum Bayar</option>
       </select>
     </div>
 
@@ -102,6 +108,8 @@
 
 <!-- Modal Struk Admin -->
 <dialog id="strukModal" class="modal modal-struk"><div id="strukModalIsi"></div></dialog>
+<!-- Modal Edit Pesanan Admin -->
+<dialog id="editPesananModal" class="modal modal-edit-pesanan"><div id="editPesananIsi"></div></dialog>
 <div id="areaCetakStruk" class="area-cetak" aria-hidden="true"></div>
 <div id="areaCetakLaporan" class="area-cetak-laporan" aria-hidden="true"></div>
 <div class="toast" id="toast" role="status"></div>

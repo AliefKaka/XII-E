@@ -311,6 +311,7 @@
     var namaToko = (toko && toko.nama) || 'D SECO';
     var alamatStan = (toko && toko.lokasi && toko.lokasi.alamat) || '';
     var filterStatus = (infoFilter && infoFilter.status) || 'Semua';
+    var filterBayar = (infoFilter && infoFilter.statusBayar) || 'Semua';
     var filterCari = (infoFilter && infoFilter.cari) || '';
     var waktuCetak = formatWaktu(new Date().toISOString());
 
@@ -372,6 +373,7 @@
         '<div class="laporan-meta">' +
           '<div><span>Waktu Cetak</span><b>' + esc(waktuCetak) + '</b></div>' +
           '<div><span>Filter Status</span><b>' + esc(filterStatus) + '</b></div>' +
+          '<div><span>Filter Pembayaran</span><b>' + esc(filterBayar) + '</b></div>' +
           (filterCari ? '<div><span>Kata Kunci</span><b>' + esc(filterCari) + '</b></div>' : '') +
         '</div>' +
       '</div>' +
@@ -440,12 +442,14 @@
     var lap = hitungLaporanOmset(pesananList, produkList, infoFilter);
     var namaToko = (toko && toko.nama) || 'D SECO';
     var filterStatus = (infoFilter && infoFilter.status) || 'Semua';
+    var filterBayar = (infoFilter && infoFilter.statusBayar) || 'Semua';
     var filterCari = (infoFilter && infoFilter.cari) || '';
     var baris = [];
 
     baris.push(['LAPORAN OMSET & DATA PESANAN MASUK', namaToko]);
     baris.push(['Waktu Unduh', formatWaktu(new Date().toISOString())]);
     baris.push(['Filter Status', filterStatus]);
+    baris.push(['Filter Pembayaran', filterBayar]);
     if (filterCari) baris.push(['Kata Kunci', filterCari]);
     baris.push([]);
 
@@ -625,6 +629,22 @@
 
   function ubahStatusBayar(idAtauKode, statusBayarBaru, toko) {
     return patchPesanan(idAtauKode, { status_bayar: statusBayarBaru }, toko);
+  }
+
+  function perbaruiPesanan(idAtauKode, perubahan, toko) {
+    var payload = {};
+    if (perubahan.nama != null) payload.nama = String(perubahan.nama).trim();
+    if (perubahan.catatan != null) payload.catatan = String(perubahan.catatan);
+    if (perubahan.pengiriman != null) payload.pengiriman = String(perubahan.pengiriman);
+    if (perubahan.alamat != null) payload.alamat = String(perubahan.alamat);
+    if (perubahan.ongkir != null) payload.ongkir = Math.round(Number(perubahan.ongkir) || 0);
+    if (perubahan.metode_bayar != null) payload.metode_bayar = String(perubahan.metode_bayar);
+    if (perubahan.status_bayar != null) payload.status_bayar = String(perubahan.status_bayar);
+    if (Array.isArray(perubahan.items)) payload.items = perubahan.items;
+    if (perubahan.total != null) payload.total = Math.round(Number(perubahan.total) || 0);
+    if (perubahan.status != null) payload.status = String(perubahan.status);
+    if (perubahan.pesan_wa != null) payload.pesan_wa = String(perubahan.pesan_wa);
+    return patchPesanan(idAtauKode, payload, toko);
   }
 
   function hapusPesanan(idAtauKode, toko) {
@@ -1082,6 +1102,7 @@
     ambilSemuaPesanan: ambilSemuaPesanan,
     ubahStatusPesanan: ubahStatusPesanan,
     ubahStatusBayar: ubahStatusBayar,
+    perbaruiPesanan: perbaruiPesanan,
     hapusPesanan: hapusPesanan,
     normalisasiPesanan: normalisasiPesanan,
     hitungTerjualPerProduk: hitungTerjualPerProduk,
