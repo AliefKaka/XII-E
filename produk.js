@@ -13,7 +13,7 @@ window.TOKO = {
   lokasi: {
     nama: 'D SECO',
     alamat: 'JI. AR Hakim No.04, Ditotrunan, Kec. Lumajang, Kabupaten Lumajang, Jawa Timur 67316 (sebelah CABDIN)',
-    jamBuka: 'jumat, 06.00 – 15.15 WIB',
+    jamBuka: 'Sabtu, 06.00 – 15.15 WIB',
     lat: -8.137244,
     lng: 113.223281
   },
