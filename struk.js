@@ -576,6 +576,7 @@
 
     return fetch(target, {
       method: 'GET',
+      cache: 'no-store',
       headers: headers
     }).then(function (r) {
       if (!r.ok) {
@@ -591,35 +592,86 @@
   }
 
   function patchPesanan(idAtauKode, perubahan, toko) {
-    var list = bacaLokal();
-    list.forEach(function (x) {
-      if (String(x.id) === String(idAtauKode) || x.kode === idAtauKode) {
-        Object.keys(perubahan).forEach(function (k) { x[k] = perubahan[k]; });
+    var targetId = '';
+    var targetKode = '';
+    if (idAtauKode && typeof idAtauKode === 'object') {
+      if (idAtauKode.id != null && idAtauKode.id !== '') targetId = String(idAtauKode.id).trim();
+      if (idAtauKode.kode != null && idAtauKode.kode !== '') targetKode = String(idAtauKode.kode).trim();
+    } else if (idAtauKode != null && idAtauKode !== '') {
+      var rawKey = String(idAtauKode).trim();
+      if (/^\d+$/.test(rawKey)) targetId = rawKey;
+      else targetKode = rawKey;
+    }
+
+    function cocokItem(x) {
+      if (!x) return false;
+      if (targetId && x.id != null && String(x.id) === targetId) return true;
+      if (targetKode && x.kode && String(x.kode) === targetKode) return true;
+      return false;
+    }
+
+    function simpanPerubahanLokal(savedRow) {
+      var list = bacaLokal();
+      var ketemu = false;
+      list = list.map(function (x) {
+        if (cocokItem(x)) {
+          ketemu = true;
+          return normalisasiPesanan(Object.assign({}, x, perubahan, savedRow || {}));
+        }
+        return x;
+      });
+      if (!ketemu && savedRow) {
+        list.unshift(normalisasiPesanan(savedRow));
       }
-    });
-    tulisLokal(list);
+      tulisLokal(list);
+      return list.find(cocokItem) || (savedRow ? normalisasiPesanan(savedRow) : null);
+    }
 
     if (!supabaseAktif(toko) || typeof fetch !== 'function') {
-      return Promise.resolve({ ok: true, mode: 'lokal' });
+      var lokalUpdated = simpanPerubahanLokal(null);
+      return Promise.resolve({ ok: true, mode: 'lokal', data: lokalUpdated });
     }
-    var isNumericId = typeof idAtauKode === 'number' || /^\d+$/.test(String(idAtauKode));
+
     var langsung = supabaseLangsungAktif(toko);
+    var queryVercel = [];
+    if (targetId) queryVercel.push('id=' + encodeURIComponent(targetId));
+    if (targetKode) queryVercel.push('kode=' + encodeURIComponent(targetKode));
+
     var target = langsung
-      ? urlRest(toko, isNumericId ? '?id=eq.' + encodeURIComponent(idAtauKode) : '?kode=eq.' + encodeURIComponent(idAtauKode))
-      : urlApiVercel(toko, isNumericId ? '?id=' + encodeURIComponent(idAtauKode) : '?kode=' + encodeURIComponent(idAtauKode));
+      ? urlRest(toko, targetId ? '?id=eq.' + encodeURIComponent(targetId) : '?kode=eq.' + encodeURIComponent(targetKode))
+      : urlApiVercel(toko, queryVercel.length ? '?' + queryVercel.join('&') : '');
     var headers = langsung
       ? headerSupabase(toko, { 'Prefer': 'return=representation' })
       : { 'Content-Type': 'application/json' };
 
     return fetch(target, {
       method: 'PATCH',
+      cache: 'no-store',
       headers: headers,
       body: JSON.stringify(perubahan)
     }).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ': ' + t); });
-      return { ok: true, mode: 'supabase' };
+      return r.text().then(function (t) {
+        if (!r.ok) {
+          throw new Error('HTTP ' + r.status + ': ' + (t || 'Gagal memperbarui pesanan'));
+        }
+        var parsed = null;
+        try { parsed = t ? JSON.parse(t) : null; } catch (e) { parsed = null; }
+        var saved = Array.isArray(parsed) ? parsed[0] : (parsed && typeof parsed === 'object' ? parsed : null);
+        if (!saved) {
+          throw new Error('Perubahan tidak tersimpan di database (baris pesanan tidak ditemukan atau kebijakan UPDATE Supabase belum aktif).');
+        }
+        if (perubahan.nama != null && saved.nama != null && String(saved.nama).trim() !== String(perubahan.nama).trim()) {
+          throw new Error('Server /api/pesanan mengabaikan perubahan nama/formulir. Pastikan file api/pesanan.js terbaru sudah di-deploy di Vercel.');
+        }
+        if (perubahan.total != null && saved.total != null && Math.round(Number(saved.total)) !== Math.round(Number(perubahan.total))) {
+          throw new Error('Server /api/pesanan mengabaikan perubahan item/total. Pastikan file api/pesanan.js terbaru sudah di-deploy di Vercel.');
+        }
+        var norm = normalisasiPesanan(saved);
+        simpanPerubahanLokal(norm);
+        return { ok: true, mode: 'supabase', data: norm };
+      });
     }).catch(function (err) {
-      return { ok: false, mode: 'lokal', error: err && err.message ? err.message : String(err) };
+      return { ok: false, mode: 'supabase', error: err && err.message ? err.message : String(err) };
     });
   }
 

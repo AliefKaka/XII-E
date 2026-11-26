@@ -60,7 +60,7 @@ window.TOKO = {
    { bentuk: 'kaos'|'tote'|'mug'|'topi'|'botol'|'buku'|'lilin'|'tas'|'tatakan', warna: '#hex', aksen: '#hex' }. */
 window.PRODUK = [
   {
-    id: 'dorayaki-lezat', nama: 'dorayaki', kategori: 'Makanan', harga: 3500, label: 'Terlaris', stok: 90,
+    id: 'dorayaki-lezat', nama: 'dorayaki', kategori: 'Makanan', harga: 3500, label: 'Terlaris', stok: 80,
     deskripsi: 'Dorayaki kue khas Jepang bertekstur lembut dengan isian manis yang lezat, cocok dinikmati sebagai camilan kapan saja',
     varian: [],
     gambar: ['img/dorayaki.jpg']

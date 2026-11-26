@@ -9,6 +9,7 @@
   var INTERVAL_SYNC_MS = 15000;
   var timerSinkron = null;
   var sedangMuat = false;
+  var sedangEdit = false;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -124,7 +125,7 @@
     }
     if (aktif) {
       timerSinkron = setInterval(function () {
-        if (!document.hidden && sudahMasuk()) muatPesanan(true);
+        if (!document.hidden && sudahMasuk() && !sedangEdit) muatPesanan(true);
       }, INTERVAL_SYNC_MS);
     }
   }
@@ -461,6 +462,7 @@
     }
 
     renderItemEditor();
+    sedangEdit = true;
     if (!modal.open) modal.showModal();
 
     selPengiriman.onchange = function () {
@@ -572,22 +574,34 @@
       btnSimpan.disabled = true;
       btnSimpan.textContent = 'Menyimpan…';
 
-      StrukKit.perbaruiPesanan(kunciId, perubahan, TOKO).then(function (res) {
-        semuaPesanan.forEach(function (x) {
-          if (String(x.id) === kunciId || x.kode === kunciId) {
-            Object.keys(perubahan).forEach(function (k) { x[k] = perubahan[k]; });
-            x.subtotal = h.subtotal;
+      var targetKunci = { id: pesanan.id, kode: pesanan.kode };
+      StrukKit.perbaruiPesanan(targetKunci, perubahan, TOKO).then(function (res) {
+        if (!res || !res.ok) {
+          btnSimpan.disabled = false;
+          btnSimpan.textContent = 'Simpan Perubahan';
+          galatEl.textContent = (res && res.error) ? res.error : 'Gagal menyimpan perubahan ke database. Coba lagi.';
+          galatEl.hidden = false;
+          toast('Gagal menyimpan ke database');
+          return;
+        }
+        var dataBaru = (res && res.data) ? res.data : Object.assign({}, pesanan, perubahan, { subtotal: h.subtotal });
+        semuaPesanan = semuaPesanan.map(function (x) {
+          if ((pesanan.id != null && String(x.id) === String(pesanan.id)) || x.kode === pesanan.kode) {
+            return Object.assign({}, x, dataBaru);
           }
+          return x;
         });
         renderStatistik();
         renderStok();
         renderDaftar();
+        sedangEdit = false;
         modal.close();
-        toast(res.ok ? 'Perubahan pesanan ' + pesanan.kode + ' disimpan' : 'Perubahan disimpan lokal (cek Supabase)');
-      }).catch(function () {
+        toast('Perubahan pesanan ' + pesanan.kode + ' tersimpan permanen');
+        if (res.mode === 'supabase') muatPesanan(true);
+      }).catch(function (err) {
         btnSimpan.disabled = false;
         btnSimpan.textContent = 'Simpan Perubahan';
-        galatEl.textContent = 'Gagal menyimpan perubahan pesanan.';
+        galatEl.textContent = (err && err.message) ? err.message : 'Gagal menyimpan perubahan pesanan.';
         galatEl.hidden = false;
       });
     };
@@ -710,10 +724,10 @@
   }
 
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && sudahMasuk()) muatPesanan(true);
+    if (!document.hidden && sudahMasuk() && !sedangEdit) muatPesanan(true);
   });
   window.addEventListener('focus', function () {
-    if (sudahMasuk()) muatPesanan(true);
+    if (sudahMasuk() && !sedangEdit) muatPesanan(true);
   });
 
   $('#daftarPesanan').addEventListener('change', function (e) {
@@ -772,6 +786,7 @@
   $('#strukModal').addEventListener('click', function (e) { if (e.target === this) this.close(); });
   if ($('#editPesananModal')) {
     $('#editPesananModal').addEventListener('click', function (e) { if (e.target === this) this.close(); });
+    $('#editPesananModal').addEventListener('close', function () { sedangEdit = false; });
   }
 
   tampilkanTampilan();
